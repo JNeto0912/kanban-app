@@ -121,6 +121,8 @@ export default function Page() {
   const [categoryName, setCategoryName] = useState("");
   const [categoryProfessional, setCategoryProfessional] = useState(false);
   const [form, setForm] = useState<CardFormState>(EMPTY_FORM);
+  const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
 
   useEffect(() => {
     try {
@@ -130,7 +132,9 @@ export default function Page() {
       if (savedCategories) {
         const parsedCategories = JSON.parse(savedCategories);
         if (Array.isArray(parsedCategories)) {
-          setCategories(dedupeCategories([...DEFAULT_CATEGORIES, ...parsedCategories]));
+          setCategories(
+            dedupeCategories([...DEFAULT_CATEGORIES, ...parsedCategories])
+          );
         }
       }
 
@@ -170,7 +174,17 @@ export default function Page() {
     return filtered.sort((a, b) => b.updatedAt - a.updatedAt);
   }, [cards, filterCategoryId]);
 
-  const totalVisibleCards = visibleCards.length;
+  const cardsByStatus = useMemo(() => {
+    const grouped = Object.fromEntries(
+      STATUSES.map((status) => [status, [] as Card[]])
+    ) as Record<Status, Card[]>;
+
+    for (const card of visibleCards) {
+      grouped[card.status].push(card);
+    }
+
+    return grouped;
+  }, [visibleCards]);
 
   function resetForm() {
     setForm(EMPTY_FORM);
@@ -273,6 +287,34 @@ export default function Page() {
     );
   }
 
+  function handleCardDragStart(cardId: string) {
+    setDraggingCardId(cardId);
+  }
+
+  function handleCardDragEnd() {
+    setDraggingCardId(null);
+    setDragOverStatus(null);
+  }
+
+  function handleCardDrop(targetStatus: Status) {
+    if (!draggingCardId) return;
+
+    setCards((prev) =>
+      prev.map((card) =>
+        card.id === draggingCardId
+          ? {
+              ...card,
+              status: targetStatus,
+              updatedAt: Date.now(),
+            }
+          : card
+      )
+    );
+
+    setDraggingCardId(null);
+    setDragOverStatus(null);
+  }
+
   function handleAddCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -346,21 +388,17 @@ export default function Page() {
 
               <div className="rounded-2xl bg-white/10 p-4">
                 <p className="text-xs text-slate-300">Visíveis</p>
-                <p className="mt-1 text-2xl font-bold">{totalVisibleCards}</p>
+                <p className="mt-1 text-2xl font-bold">{visibleCards.length}</p>
               </div>
 
-              {STATUSES.map((status) => {
-                const count = visibleCards.filter(
-                  (card) => card.status === status
-                ).length;
-
-                return (
-                  <div key={status} className="rounded-2xl bg-white/10 p-4">
-                    <p className="text-xs text-slate-300">{status}</p>
-                    <p className="mt-1 text-2xl font-bold">{count}</p>
-                  </div>
-                );
-              })}
+              {STATUSES.map((status) => (
+                <div key={status} className="rounded-2xl bg-white/10 p-4">
+                  <p className="text-xs text-slate-300">{status}</p>
+                  <p className="mt-1 text-2xl font-bold">
+                    {cardsByStatus[status].length}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
         </header>
@@ -511,7 +549,7 @@ export default function Page() {
                 <div>
                   <h2 className="text-xl font-semibold">Board</h2>
                   <p className="text-sm text-slate-500">
-                    Cartões agrupados por status.
+                    Arraste os cartões para mudar o status.
                   </p>
                 </div>
 
@@ -536,18 +574,33 @@ export default function Page() {
 
               <div className="grid gap-4 xl:grid-cols-5 md:grid-cols-2">
                 {STATUSES.map((status) => {
-                  const cardsInColumn = visibleCards.filter(
-                    (card) => card.status === status
-                  );
+                  const cardsInColumn = cardsByStatus[status];
+                  const isOver = dragOverStatus === status;
 
                   return (
                     <div
                       key={status}
-                      className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOverStatus(status);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleCardDrop(status);
+                      }}
+                      className={`min-h-72 rounded-3xl border p-4 transition ${
+                        isOver
+                          ? "border-slate-400 bg-slate-100 ring-2 ring-slate-300"
+                          : "border-slate-200 bg-slate-50"
+                      }`}
                     >
                       <div className="mb-4 flex items-center justify-between gap-3">
                         <h3 className="font-semibold text-slate-800">{status}</h3>
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusClass(status)}`}>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusClass(
+                            status
+                          )}`}
+                        >
                           {cardsInColumn.length}
                         </span>
                       </div>
@@ -555,7 +608,7 @@ export default function Page() {
                       <div className="space-y-3">
                         {cardsInColumn.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
-                            Nenhum cartão aqui.
+                            Solte cartões aqui.
                           </div>
                         ) : (
                           cardsInColumn.map((card) => {
@@ -566,13 +619,22 @@ export default function Page() {
                             return (
                               <div
                                 key={card.id}
-                                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
+                                draggable
+                                onDragStart={() => handleCardDragStart(card.id)}
+                                onDragEnd={handleCardDragEnd}
+                                className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md ${
+                                  draggingCardId === card.id
+                                    ? "opacity-60 ring-2 ring-slate-300"
+                                    : ""
+                                }`}
+                                title="Arraste para outro status"
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div>
                                     <h4 className="font-semibold text-slate-900">
                                       {card.title}
                                     </h4>
+
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       <span
                                         className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${categoryClass(
@@ -620,6 +682,7 @@ export default function Page() {
                                   <label className="block text-xs font-medium text-slate-500">
                                     Mudar status
                                   </label>
+
                                   <select
                                     value={card.status}
                                     onChange={(e) =>
@@ -740,9 +803,9 @@ export default function Page() {
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
               <h2 className="text-xl font-semibold">Observação</h2>
               <p className="mt-3 text-sm leading-6 text-slate-600">
-                Os dados ficam salvos no navegador usando <strong>LocalStorage</strong>.
-                Depois, se quiser, esse projeto pode evoluir para banco de dados,
-                login e compartilhamento entre usuários.
+                Os dados ficam salvos no navegador usando{" "}
+                <strong>LocalStorage</strong>. Agora os cartões também podem ser
+                movidos com arrastar e soltar entre os status.
               </p>
             </div>
           </aside>
