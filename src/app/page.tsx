@@ -91,7 +91,7 @@ function dedupeCategories(items: Category[]) {
   return Array.from(map.values());
 }
 
-function statusClass(status: Status) {
+function statusBadgeClass(status: Status) {
   switch (status) {
     case "Pendente":
       return "bg-slate-100 text-slate-700 ring-slate-200";
@@ -106,7 +106,22 @@ function statusClass(status: Status) {
   }
 }
 
-function categoryClass(category: Category) {
+function statusBorderClass(status: Status) {
+  switch (status) {
+    case "Pendente":
+      return "border-l-slate-300";
+    case "Em andamento":
+      return "border-l-blue-300";
+    case "Pausado":
+      return "border-l-amber-300";
+    case "Homologado":
+      return "border-l-violet-300";
+    case "Finalizado":
+      return "border-l-emerald-300";
+  }
+}
+
+function categoryBadgeClass(category: Category) {
   return category.requiresClient
     ? "bg-blue-50 text-blue-700 ring-blue-200"
     : "bg-slate-100 text-slate-700 ring-slate-200";
@@ -362,57 +377,68 @@ export default function Page() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <header className="rounded-3xl bg-gradient-to-r from-slate-900 to-slate-700 p-6 text-white shadow-lg">
-          <div className="flex flex-col gap-6">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#ffffff,_#eef2ff_38%,_#e2e8f0_100%)] text-slate-900">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+        <header className="overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-900 text-white shadow-2xl shadow-slate-200/70">
+          <div className="grid gap-6 p-6 lg:grid-cols-[1.35fr_.85fr] lg:p-8">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-300">
+              <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
                 Projeto Kanban
               </p>
-              <h1 className="mt-2 text-3xl font-bold">
-                Kanban simples com categorias e clientes
+              <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
+                Kanban simples com visual mais profissional
               </h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-200">
-                Cartões por categoria: Particular, Igreja, Trabalho e outras
-                categorias personalizadas. Os cartões profissionais mostram o
-                campo Cliente.
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+                Organize cartões por categoria, marque cliente nos cards
+                profissionais e mova tudo entre os status com arrastar e soltar.
               </p>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {DEFAULT_CATEGORIES.map((category) => (
+                  <span
+                    key={category.id}
+                    className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium text-slate-200 backdrop-blur"
+                  >
+                    {category.name}
+                  </span>
+                ))}
+                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium text-slate-200 backdrop-blur">
+                  Categorias personalizadas
+                </span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <div className="rounded-2xl bg-white/10 p-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
                 <p className="text-xs text-slate-300">Total</p>
                 <p className="mt-1 text-2xl font-bold">{cards.length}</p>
               </div>
 
-              <div className="rounded-2xl bg-white/10 p-4">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
                 <p className="text-xs text-slate-300">Visíveis</p>
                 <p className="mt-1 text-2xl font-bold">{visibleCards.length}</p>
               </div>
 
               {STATUSES.map((status) => (
-                <div key={status} className="rounded-2xl bg-white/10 p-4">
+                <div key={status} className="rounded-2xl border border-white/10 bg-white/10 p-4">
                   <p className="text-xs text-slate-300">{status}</p>
-                  <p className="mt-1 text-2xl font-bold">
-                    {cardsByStatus[status].length}
-                  </p>
+                  <p className="mt-1 text-2xl font-bold">{cardsByStatus[status].length}</p>
                 </div>
               ))}
             </div>
           </div>
         </header>
 
-        <section className="mt-6 grid gap-6 xl:grid-cols-3">
-          <div className="space-y-6 xl:col-span-2">
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-              <div className="mb-5 flex items-center justify-between gap-4">
+        <section className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_.85fr]">
+          <div className="space-y-6">
+            <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold">
                     {editingId ? "Editar cartão" : "Novo cartão"}
                   </h2>
-                  <p className="text-sm text-slate-500">
-                    Preencha o cartão e escolha a categoria e o status.
+                  <p className="mt-1 text-sm text-slate-500">
+                    Preencha os dados, escolha a categoria e defina o status.
                   </p>
                 </div>
 
@@ -437,7 +463,7 @@ export default function Page() {
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, title: e.target.value }))
                     }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                     placeholder="Ex.: Organizar reunião"
                   />
                 </div>
@@ -455,7 +481,7 @@ export default function Page() {
                       }))
                     }
                     rows={4}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                     placeholder="Detalhes do cartão..."
                   />
                 </div>
@@ -476,7 +502,7 @@ export default function Page() {
                         client: nextCategory?.requiresClient ? prev.client : "",
                       }));
                     }}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                   >
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>
@@ -499,7 +525,7 @@ export default function Page() {
                         status: e.target.value as Status,
                       }))
                     }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                   >
                     {STATUSES.map((status) => (
                       <option key={status} value={status}>
@@ -519,13 +545,13 @@ export default function Page() {
                       onChange={(e) =>
                         setForm((prev) => ({ ...prev, client: e.target.value }))
                       }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                       placeholder="Nome do cliente"
                     />
                   </div>
                 )}
 
-                <div className="md:col-span-2 flex flex-wrap gap-3">
+                <div className="md:col-span-2 flex flex-wrap gap-3 pt-2">
                   <button
                     type="submit"
                     className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -542,13 +568,13 @@ export default function Page() {
                   </button>
                 </div>
               </form>
-            </div>
+            </section>
 
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold">Board</h2>
-                  <p className="text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-slate-500">
                     Arraste os cartões para mudar o status.
                   </p>
                 </div>
@@ -560,7 +586,7 @@ export default function Page() {
                   <select
                     value={filterCategoryId}
                     onChange={(e) => setFilterCategoryId(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                   >
                     <option value="all">Todas</option>
                     {categories.map((category) => (
@@ -588,16 +614,16 @@ export default function Page() {
                         e.preventDefault();
                         handleCardDrop(status);
                       }}
-                      className={`min-h-72 rounded-3xl border p-4 transition ${
+                      className={`min-h-72 rounded-[1.75rem] border p-4 transition ${
                         isOver
                           ? "border-slate-400 bg-slate-100 ring-2 ring-slate-300"
-                          : "border-slate-200 bg-slate-50"
+                          : "border-slate-200 bg-slate-50/80"
                       }`}
                     >
                       <div className="mb-4 flex items-center justify-between gap-3">
                         <h3 className="font-semibold text-slate-800">{status}</h3>
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusClass(
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusBadgeClass(
                             status
                           )}`}
                         >
@@ -607,7 +633,7 @@ export default function Page() {
 
                       <div className="space-y-3">
                         {cardsInColumn.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500">
                             Solte cartões aqui.
                           </div>
                         ) : (
@@ -622,7 +648,9 @@ export default function Page() {
                                 draggable
                                 onDragStart={() => handleCardDragStart(card.id)}
                                 onDragEnd={handleCardDragEnd}
-                                className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md ${
+                                className={`rounded-2xl border border-slate-200 border-l-4 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                                  statusBorderClass(card.status)
+                                } ${
                                   draggingCardId === card.id
                                     ? "opacity-60 ring-2 ring-slate-300"
                                     : ""
@@ -630,14 +658,14 @@ export default function Page() {
                                 title="Arraste para outro status"
                               >
                                 <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <h4 className="font-semibold text-slate-900">
+                                  <div className="min-w-0">
+                                    <h4 className="truncate font-semibold text-slate-900">
                                       {card.title}
                                     </h4>
 
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       <span
-                                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${categoryClass(
+                                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${categoryBadgeClass(
                                           category
                                         )}`}
                                       >
@@ -645,7 +673,7 @@ export default function Page() {
                                       </span>
 
                                       <span
-                                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusClass(
+                                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusBadgeClass(
                                           card.status
                                         )}`}
                                       >
@@ -691,7 +719,7 @@ export default function Page() {
                                         e.target.value as Status
                                       )
                                     }
-                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                                   >
                                     {STATUSES.map((statusOption) => (
                                       <option key={statusOption} value={statusOption}>
@@ -724,11 +752,11 @@ export default function Page() {
                   );
                 })}
               </div>
-            </div>
+            </section>
           </div>
 
-          <aside className="space-y-6">
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <aside className="space-y-6 xl:sticky xl:top-6 h-fit">
+            <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold">Nova categoria</h2>
               <p className="mt-1 text-sm text-slate-500">
                 Crie categorias extras e marque se são profissionais.
@@ -742,7 +770,7 @@ export default function Page() {
                   <input
                     value={categoryName}
                     onChange={(e) => setCategoryName(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-4 focus:ring-slate-200"
                     placeholder="Ex.: Freelance, Escola, Família..."
                   />
                 </div>
@@ -766,9 +794,9 @@ export default function Page() {
                   Adicionar categoria
                 </button>
               </form>
-            </div>
+            </section>
 
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-xl font-semibold">Categorias</h2>
               <p className="mt-1 text-sm text-slate-500">
                 As categorias padrão já vêm prontas no sistema.
@@ -780,8 +808,10 @@ export default function Page() {
                     key={category.id}
                     className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   >
-                    <div>
-                      <p className="font-medium text-slate-800">{category.name}</p>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-slate-800">
+                        {category.name}
+                      </p>
                       <p className="text-xs text-slate-500">
                         {category.custom ? "Personalizada" : "Padrão"} •{" "}
                         {category.requiresClient ? "Exige cliente" : "Sem cliente"}
@@ -789,7 +819,7 @@ export default function Page() {
                     </div>
 
                     <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${categoryClass(
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${categoryBadgeClass(
                         category
                       )}`}
                     >
@@ -798,16 +828,16 @@ export default function Page() {
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
 
-            <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <section className="rounded-[2rem] border border-slate-200 bg-slate-900 p-6 text-white shadow-sm">
               <h2 className="text-xl font-semibold">Observação</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-600">
-                Os dados ficam salvos no navegador usando{" "}
-                <strong>LocalStorage</strong>. Agora os cartões também podem ser
-                movidos com arrastar e soltar entre os status.
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                Os dados ficam salvos no navegador usando <strong>LocalStorage</strong>.
+                Essa versão está mais limpa visualmente e mantém o drag and drop
+                entre os status.
               </p>
-            </div>
+            </section>
           </aside>
         </section>
       </div>
