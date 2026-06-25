@@ -1,10 +1,14 @@
-import { Pool } from "pg";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
+// prisma/seed.js
+const { Pool } = require("pg");
+const { PrismaPg } = require("@prisma/adapter-pg");
+// const { PrismaClient } = require("@prisma/client"); // Remova ou comente esta linha
+const { PrismaClient } = require("../node_modules/.prisma/client"); // Adicione esta linha
 
 const pool = new Pool({ connectionString: process.env.DIRECT_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
+
+// ... o restante do seu seed.js ...
 
 async function main() {
   await prisma.activityCategory.upsert({ where:{id:"particular"}, update:{}, create:{id:"particular",name:"Particular",custom:false} });
