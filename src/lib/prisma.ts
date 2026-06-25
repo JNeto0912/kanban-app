@@ -1,6 +1,5 @@
 // src/lib/prisma.ts
-// import { PrismaClient } from "@prisma/client"; // Remova ou comente esta linha
-import { PrismaClient } from "../../node_modules/.prisma/client"; // Adicione esta linha
+import { PrismaClient } from "@prisma/client"; // Volte para este import
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
