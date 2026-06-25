@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ActivityCategory {
+  id         String     @id @default(cuid())
+  name       String     @unique
+  custom     Boolean    @default(true)
+  activities Activity[]
+  createdAt  DateTime   @default(now())
+}
+
+model Activity {
+  id          String           @id @default(cuid())
+  title       String
+  description String           @default("")
+  client      String           @default("")
+  status      String           @default("Pendente")
+  category    ActivityCategory @relation(fields: [categoryId], references: [id])
+  categoryId  String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model FinanceCategory {
+  id      String         @id @default(cuid())
+  name    String         @unique
+  kind    String         @default("A pagar")
+  partner Boolean        @default(false)
+  custom  Boolean        @default(true)
+  entries FinanceEntry[]
+}
+
+model FinanceEntry {
+  id         String          @id @default(cuid())
+  title      String
+  amount     Float
+  dueDate    DateTime
+  kind       String          @default("A pagar")
+  category   FinanceCategory @relation(fields: [categoryId], references: [id])
+  categoryId String
+  partner    String          @default("")
+  notes      String          @default("")
+  recurring  Boolean         @default(false)
+  paid       Boolean         @default(false)
+  paidAt     DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+}
