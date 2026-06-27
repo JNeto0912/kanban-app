@@ -1,9 +1,14 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
+  // Se você tiver uma linha 'output = "..."' aqui, remova-a
+  // para que o Prisma Client seja gerado no local padrão.
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql" // Ou "mysql", "sqlite", etc.
+  url      = env("DATABASE_URL") // Use DATABASE_URL aqui
 }
 
 model ActivityCategory {

@@ -1,18 +1,16 @@
 // src/lib/prisma.ts
-import { PrismaClient } from "@prisma/client"; // Volte para este import
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
 function createPrisma() {
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-  });
-  const adapter = new PrismaPg(pool);
-  return new PrismaClient({ adapter });
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL não está definida no ambiente.");
+  }
+  // Use o PrismaClient padrão, ele se conecta diretamente via DATABASE_URL
+  return new PrismaClient();
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrisma();

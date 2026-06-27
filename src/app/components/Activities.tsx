@@ -54,6 +54,20 @@ export default function Activities() {
         fetch("/api/activity-cats"),
       ]);
 
+      if (!actRes.ok) {
+        const errorText = await actRes.text();
+        throw new Error(
+          `Erro ao carregar atividades (status: ${actRes.status}): ${errorText}`,
+        );
+      }
+
+      if (!catRes.ok) {
+        const errorText = await catRes.text();
+        throw new Error(
+          `Erro ao carregar categorias (status: ${catRes.status}): ${errorText}`,
+        );
+      }
+
       const [actData, catData] = await Promise.all([
         actRes.json(),
         catRes.json(),
@@ -68,6 +82,11 @@ export default function Activities() {
       }));
     } catch (error) {
       console.error("Erro ao carregar atividades:", error);
+      alert(
+        `Erro ao carregar atividades: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     } finally {
       setLoading(false);
     }
@@ -99,27 +118,37 @@ export default function Activities() {
     };
 
     try {
+      let res: Response;
+
       if (editingId) {
-        const res = await fetch(`/api/activities/${editingId}`, {
+        res = await fetch(`/api/activities/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-
-        const updated = await res.json();
-
-        setActivities((prev) =>
-          prev.map((a) => (a.id === editingId ? updated : a)),
-        );
       } else {
-        const res = await fetch("/api/activities", {
+        res = await fetch("/api/activities", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+      }
 
-        const created = await res.json();
-        setActivities((prev) => [created, ...prev]);
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(
+          `Erro ao salvar atividade (status: ${res.status}): ${errorText}`,
+        );
+      }
+
+      const data = await res.json();
+
+      if (editingId) {
+        setActivities((prev) =>
+          prev.map((a) => (a.id === editingId ? data : a)),
+        );
+      } else {
+        setActivities((prev) => [data, ...prev]);
       }
 
       setForm({
@@ -132,7 +161,11 @@ export default function Activities() {
       setEditingId(null);
     } catch (error) {
       console.error("Erro ao salvar atividade:", error);
-      alert("Erro ao salvar atividade.");
+      alert(
+        `Erro ao salvar atividade: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
@@ -140,14 +173,25 @@ export default function Activities() {
     if (!confirm("Excluir esta atividade?")) return;
 
     try {
-      await fetch(`/api/activities/${id}`, {
+      const res = await fetch(`/api/activities/${id}`, {
         method: "DELETE",
       });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(
+          `Erro ao excluir atividade (status: ${res.status}): ${errorText}`,
+        );
+      }
 
       setActivities((prev) => prev.filter((a) => a.id !== id));
     } catch (error) {
       console.error("Erro ao excluir atividade:", error);
-      alert("Erro ao excluir atividade.");
+      alert(
+        `Erro ao excluir atividade: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
@@ -192,7 +236,6 @@ export default function Activities() {
 
     const previous = activities;
 
-    // Atualização otimista
     setActivities((prev) =>
       prev.map((a) => (a.id === dragId ? { ...a, status } : a)),
     );
@@ -211,18 +254,25 @@ export default function Activities() {
       });
 
       if (!res.ok) {
+        const errorText = await res.text();
         setActivities(previous);
-        alert("Não foi possível mover o card.");
-      } else {
-        const updated = await res.json();
-        setActivities((prev) =>
-          prev.map((a) => (a.id === dragId ? updated : a)),
+        throw new Error(
+          `Erro ao mover card (status: ${res.status}): ${errorText}`,
         );
       }
+
+      const updated = await res.json();
+      setActivities((prev) =>
+        prev.map((a) => (a.id === dragId ? updated : a)),
+      );
     } catch (error) {
       console.error("Erro ao mover atividade:", error);
       setActivities(previous);
-      alert("Erro ao mover a atividade.");
+      alert(
+        `Erro ao mover atividade: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     } finally {
       setDragId(null);
     }
@@ -300,9 +350,7 @@ export default function Activities() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Categoria
-          </label>
+          <label className="text-xs font-medium text-slate-600">Categoria</label>
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.categoryId}

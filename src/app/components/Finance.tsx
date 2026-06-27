@@ -52,6 +52,20 @@ export default function Finance() {
         fetch("/api/finance-cats"),
       ]);
 
+      if (!entRes.ok) {
+        const errorText = await entRes.text();
+        throw new Error(
+          `Erro ao carregar lançamentos financeiros (status: ${entRes.status}): ${errorText}`,
+        );
+      }
+
+      if (!catRes.ok) {
+        const errorText = await catRes.text();
+        throw new Error(
+          `Erro ao carregar categorias financeiras (status: ${catRes.status}): ${errorText}`,
+        );
+      }
+
       const [entData, catData] = await Promise.all([
         entRes.json(),
         catRes.json(),
@@ -66,6 +80,11 @@ export default function Finance() {
       }));
     } catch (error) {
       console.error("Erro ao carregar financeiro:", error);
+      alert(
+        `Erro ao carregar dados: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     } finally {
       setLoading(false);
     }
@@ -111,27 +130,37 @@ export default function Finance() {
     };
 
     try {
+      let res: Response;
+
       if (editingId) {
-        const res = await fetch(`/api/finance/${editingId}`, {
+        res = await fetch(`/api/finance/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-
-        const updated = await res.json();
-
-        setEntries((prev) =>
-          prev.map((e) => (e.id === editingId ? updated : e)),
-        );
       } else {
-        const res = await fetch("/api/finance", {
+        res = await fetch("/api/finance", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+      }
 
-        const created = await res.json();
-        setEntries((prev) => [created, ...prev]);
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(
+          `Erro ao salvar lançamento (status: ${res.status}): ${errorText}`,
+        );
+      }
+
+      const data = await res.json();
+
+      if (editingId) {
+        setEntries((prev) =>
+          prev.map((e) => (e.id === editingId ? data : e)),
+        );
+      } else {
+        setEntries((prev) => [data, ...prev]);
       }
 
       setForm({
@@ -147,7 +176,11 @@ export default function Finance() {
       setEditingId(null);
     } catch (error) {
       console.error("Erro ao salvar lançamento:", error);
-      alert("Erro ao salvar lançamento.");
+      alert(
+        `Erro ao salvar lançamento: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
@@ -156,14 +189,25 @@ export default function Finance() {
     if (!confirm("Excluir este lançamento?")) return;
 
     try {
-      await fetch(`/api/finance/${id}`, {
+      const res = await fetch(`/api/finance/${id}`, {
         method: "DELETE",
       });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(
+          `Erro ao excluir lançamento (status: ${res.status}): ${errorText}`,
+        );
+      }
 
       setEntries((prev) => prev.filter((e) => e.id !== id));
     } catch (error) {
       console.error("Erro ao excluir lançamento:", error);
-      alert("Erro ao excluir lançamento.");
+      alert(
+        `Erro ao excluir lançamento: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
@@ -185,6 +229,13 @@ export default function Finance() {
         body: JSON.stringify(payload),
       });
 
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(
+          `Erro ao marcar pago (status: ${res.status}): ${errorText}`,
+        );
+      }
+
       const updated = await res.json();
 
       setEntries((prev) =>
@@ -192,7 +243,11 @@ export default function Finance() {
       );
     } catch (error) {
       console.error("Erro ao marcar pago:", error);
-      alert("Erro ao marcar pago.");
+      alert(
+        `Erro ao marcar pago: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
@@ -243,9 +298,7 @@ export default function Finance() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Financeiro
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
         <div className="flex gap-4 text-xs text-slate-600">
           <span>
             A pagar:{" "}
@@ -268,9 +321,7 @@ export default function Finance() {
         className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-lg p-4"
       >
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Título
-          </label>
+          <label className="text-xs font-medium text-slate-600">Título</label>
           <input
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.title}
@@ -282,9 +333,7 @@ export default function Finance() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Valor
-          </label>
+          <label className="text-xs font-medium text-slate-600">Valor</label>
           <input
             type="number"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
@@ -297,9 +346,7 @@ export default function Finance() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Data
-          </label>
+          <label className="text-xs font-medium text-slate-600">Data</label>
           <input
             type="date"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
@@ -311,9 +358,7 @@ export default function Finance() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Tipo
-          </label>
+          <label className="text-xs font-medium text-slate-600">Tipo</label>
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.kind}
@@ -384,10 +429,7 @@ export default function Finance() {
               setForm((f) => ({ ...f, recurring: e.target.checked }))
             }
           />
-          <label
-            htmlFor="recorrente"
-            className="text-xs text-slate-600"
-          >
+          <label htmlFor="recorrente" className="text-xs text-slate-600">
             Recorrente
           </label>
         </div>
