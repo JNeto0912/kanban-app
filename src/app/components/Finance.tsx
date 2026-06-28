@@ -1,3 +1,4 @@
+// src/app/components/Finance.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -51,19 +52,9 @@ export default function Finance() {
     recurring: false,
   });
 
-  // categoria atualmente selecionada para filtrar a lista
-  const [activeCategory, setActiveCategory] = useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
-
-  // somente as categorias permitidas
-  const visibleCats = useMemo(
-    () =>
-      cats.filter((c) =>
-        ALLOWED_CATEGORIES.includes(
-          c.name as (typeof ALLOWED_CATEGORIES)[number],
-        ),
-      ),
-    [cats],
-  );
+  // categoria ativa para filtrar a lista embaixo
+  const [activeCategory, setActiveCategory] =
+    useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
 
   // ---------- LOAD ----------
   async function loadData() {
@@ -105,7 +96,7 @@ export default function Finance() {
 
       setForm((prev) => ({
         ...prev,
-        categoryId: prev.categoryId || firstVisibleCat?.id || "",
+        categoryId: prev.categoryId || firstVisibleCat?.id || catData[0]?.id || "",
       }));
 
       if (firstVisibleCat) {
@@ -198,14 +189,18 @@ export default function Finance() {
         setEntries((prev) => [data, ...prev]);
       }
 
-      const firstVisibleCat = visibleCats[0];
+      const firstVisibleCat = cats.find((c) =>
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
+      );
 
       setForm({
         title: "",
         amount: "",
         dueDate: "",
         kind: "A pagar",
-        categoryId: firstVisibleCat?.id || "",
+        categoryId: firstVisibleCat?.id || cats[0]?.id || "",
         partner: "",
         notes: "",
         recurring: false,
@@ -301,120 +296,115 @@ export default function Finance() {
       notes: entry.notes,
       recurring: entry.recurring,
     });
-
-    if (entry.category?.name && ALLOWED_CATEGORIES.includes(entry.category.name as any)) {
-      setActiveCategory(entry.category.name as (typeof ALLOWED_CATEGORIES)[number]);
-    }
   }
 
   function cancelEdit() {
     setEditingId(null);
-    const firstVisibleCat = visibleCats[0];
+    const firstVisibleCat = cats.find((c) =>
+      ALLOWED_CATEGORIES.includes(
+        c.name as (typeof ALLOWED_CATEGORIES)[number],
+      ),
+    );
+
     setForm({
       title: "",
       amount: "",
       dueDate: "",
       kind: "A pagar",
-      categoryId: firstVisibleCat?.id || "",
+      categoryId: firstVisibleCat?.id || cats[0]?.id || "",
       partner: "",
       notes: "",
       recurring: false,
     });
   }
 
-  // ---------- RESUMO POR CATEGORIA ----------
+  // ---------- SUMMARY (por categoria, pago/pendente) ----------
   const summaryByCategory = useMemo(() => {
     return ALLOWED_CATEGORIES.map((categoryName) => {
       const items = entries.filter(
         (entry) => entry.category?.name === categoryName,
       );
 
-      const toPay = items
-        .filter((entry) => entry.kind === "A pagar")
+      const toPayOpen = items
+        .filter((entry) => entry.kind === "A pagar" && !entry.paid)
         .reduce((sum, entry) => sum + entry.amount, 0);
 
-      const toReceive = items
-        .filter((entry) => entry.kind === "A receber")
+      const toPayPaid = items
+        .filter((entry) => entry.kind === "A pagar" && entry.paid)
+        .reduce((sum, entry) => sum + entry.amount, 0);
+
+      const toReceivePending = items
+        .filter((entry) => entry.kind === "A receber" && !entry.paid)
+        .reduce((sum, entry) => sum + entry.amount, 0);
+
+      const toReceiveReceived = items
+        .filter((entry) => entry.kind === "A receber" && entry.paid)
         .reduce((sum, entry) => sum + entry.amount, 0);
 
       return {
         categoryName,
-        toPay,
-        toReceive,
+        toPayOpen,
+        toPayPaid,
+        toReceivePending,
+        toReceiveReceived,
       };
     });
   }, [entries]);
 
-  // ---------- FILTRO PARA LISTA ----------
+  // lançamentos filtrados pela categoria ativa (parte de baixo)
   const filteredEntries = useMemo(() => {
-    return entries.filter(
-      (e) => e.category?.name === activeCategory,
-    );
+    return entries.filter((e) => e.category?.name === activeCategory);
   }, [entries, activeCategory]);
 
   // ---------- RENDER ----------
   return (
     <div className="space-y-6">
-      {/* Header + resumo por categoria */}
+      {/* Resumo por categoria */}
       <div className="space-y-2">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
-
-          {/* resumo global A pagar / A receber */}
-          <div className="text-xs text-slate-600">
-            {(() => {
-              const totalToPay = entries
-                .filter((e) => e.kind === "A pagar")
-                .reduce((sum, e) => sum + e.amount, 0);
-              const totalToReceive = entries
-                .filter((e) => e.kind === "A receber")
-                .reduce((sum, e) => sum + e.amount, 0);
-
-              return (
-                <>
-                  A pagar:{" "}
-                  <span className="text-amber-600 font-semibold">
-                    {formatCurrency(totalToPay)}
-                  </span>{" "}
-                  • A receber:{" "}
-                  <span className="text-emerald-600 font-semibold">
-                    {formatCurrency(totalToReceive)}
-                  </span>
-                </>
-              );
-            })()}
-          </div>
-        </div>
+        <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {summaryByCategory.map((item) => (
             <div
               key={item.categoryName}
-              className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2"
+              className="rounded-lg bg-slate-900/90 border border-slate-700 px-4 py-3 text-xs text-slate-100"
             >
-              <p className="text-[11px] font-semibold text-slate-700 mb-1">
+              <p className="text-[11px] font-semibold mb-2">
                 {item.categoryName}
               </p>
 
-              <p className="text-[11px] text-slate-600">
-                A pagar:{" "}
-                <strong className="text-amber-600">
-                  {formatCurrency(item.toPay)}
-                </strong>
-              </p>
-
-              <p className="text-[11px] text-slate-600">
-                A receber:{" "}
-                <strong className="text-emerald-600">
-                  {formatCurrency(item.toReceive)}
-                </strong>
-              </p>
+              <div className="space-y-1">
+                <p>
+                  A pagar em aberto:{" "}
+                  <span className="font-semibold text-amber-300">
+                    {formatCurrency(item.toPayOpen)}
+                  </span>
+                </p>
+                <p>
+                  A pagar pago:{" "}
+                  <span className="font-semibold text-emerald-300">
+                    {formatCurrency(item.toPayPaid)}
+                  </span>
+                </p>
+                <p>
+                  A receber pendente:{" "}
+                  <span className="font-semibold text-amber-300">
+                    {formatCurrency(item.toReceivePending)}
+                  </span>
+                </p>
+                <p>
+                  A receber recebido:{" "}
+                  <span className="font-semibold text-emerald-300">
+                    {formatCurrency(item.toReceiveReceived)}
+                  </span>
+                </p>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Form */}
+      {/* Formulário */}
       <form
         onSubmit={handleSubmit}
         className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-lg p-4"
@@ -484,11 +474,17 @@ export default function Finance() {
               setForm((f) => ({ ...f, categoryId: e.target.value }))
             }
           >
-            {visibleCats.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            {cats
+              .filter((c) =>
+                ALLOWED_CATEGORIES.includes(
+                  c.name as (typeof ALLOWED_CATEGORIES)[number],
+                ),
+              )
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
           </select>
         </div>
 

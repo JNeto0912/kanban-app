@@ -1,14 +1,13 @@
 // src/app/components/Activities.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Activity = {
   id: string;
   title: string;
   description: string;
   client: string;
-  // Atualize o tipo 'status' para incluir os novos valores
   status: "Pendente" | "Em andamento" | "Aguardando Cliente" | "Pausado" | "Concluído";
   categoryId: string;
   category: { id: string; name: string };
@@ -22,6 +21,9 @@ type Category = {
   custom: boolean;
 };
 
+// Definindo as categorias permitidas para atividades
+const ALLOWED_CATEGORIES = ["Trabalho", "Igreja", "Particular"] as const;
+
 // Adicione os novos status à lista de colunas
 const STATUS_COLUMNS: {
   id: Activity["status"];
@@ -30,8 +32,8 @@ const STATUS_COLUMNS: {
 }[] = [
   { id: "Pendente", title: "Pendente", color: "border-amber-400" },
   { id: "Em andamento", title: "Em andamento", color: "border-sky-400" },
-  { id: "Aguardando Cliente", title: "Aguardando Cliente", color: "border-purple-400" }, // Novo
-  { id: "Pausado", title: "Pausado", color: "border-gray-400" }, // Novo
+  { id: "Aguardando Cliente", title: "Aguardando Cliente", color: "border-purple-400" },
+  { id: "Pausado", title: "Pausado", color: "border-gray-400" },
   { id: "Concluído", title: "Concluído", color: "border-emerald-400" },
 ];
 
@@ -42,6 +44,9 @@ export default function Activities() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Estado para a categoria ativa
+  const [activeCategory, setActiveCategory] = useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
+
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -50,6 +55,26 @@ export default function Activities() {
     categoryId: "",
   });
 
+  // Somente as categorias permitidas
+  const visibleCats = useMemo(
+    () =>
+      cats.filter((c) =>
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
+      ),
+    [cats],
+  );
+
+  // Atividades filtradas pela categoria ativa
+  const filteredActivities = useMemo(() => {
+    const activeCatId = visibleCats.find(c => c.name === activeCategory)?.id;
+    if (!activeCatId) return [];
+    return activities.filter(a => a.categoryId === activeCatId);
+  }, [activities, activeCategory, visibleCats]);
+
+
+  // ---------- LOAD ----------
   async function loadData() {
     try {
       setLoading(true);
@@ -81,14 +106,26 @@ export default function Activities() {
       setActivities(actData);
       setCats(catData);
 
+      // Define a categoria padrão para o formulário
+      const firstVisibleCat = catData.find((c: Category) =>
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
+      );
       setForm((prev) => ({
         ...prev,
-        categoryId: prev.categoryId || catData[0]?.id || "",
+        categoryId: prev.categoryId || firstVisibleCat?.id || catData[0]?.id || "",
       }));
+
+      // Define a categoria ativa para as abas
+      if (firstVisibleCat) {
+        setActiveCategory(firstVisibleCat.name as (typeof ALLOWED_CATEGORIES)[number]);
+      }
+
     } catch (error) {
       console.error("Erro ao carregar atividades:", error);
       alert(
-        `Erro ao carregar atividades: ${
+        `Erro ao carregar dados: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -101,11 +138,12 @@ export default function Activities() {
     loadData();
   }, []);
 
+  // ---------- SUBMIT ----------
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!form.title.trim()) {
-      alert("Informe um título.");
+      alert("Informe um título para a atividade.");
       return;
     }
 
@@ -156,12 +194,18 @@ export default function Activities() {
         setActivities((prev) => [data, ...prev]);
       }
 
+      // Reset formulário
+      const firstVisibleCat = cats.find((c) =>
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
+      );
       setForm({
         title: "",
         description: "",
         client: "",
         status: "Pendente",
-        categoryId: cats[0]?.id || "",
+        categoryId: firstVisibleCat?.id || cats[0]?.id || "",
       });
       setEditingId(null);
     } catch (error) {
@@ -174,6 +218,7 @@ export default function Activities() {
     }
   }
 
+  // ---------- DELETE ----------
   async function handleDelete(id: string) {
     if (!confirm("Excluir esta atividade?")) return;
 
@@ -200,81 +245,46 @@ export default function Activities() {
     }
   }
 
-  function startEdit(activity: Activity) {
-    setEditingId(activity.id);
-    setForm({
-      title: activity.title,
-      description: activity.description,
-      client: activity.client,
-      status: activity.status,
-      categoryId: activity.categoryId,
-    });
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setForm({
-      title: "",
-      description: "",
-      client: "",
-      status: "Pendente",
-      categoryId: cats[0]?.id || "",
-    });
-  }
-
-  function onDragStart(id: string) {
+  // ---------- DRAG & DROP ----------
+  function handleDragStart(e: React.DragEvent, id: string) {
     setDragId(id);
   }
 
-  function onDragEnd() {
-    setDragId(null);
-  }
-
-  async function onDrop(status: Activity["status"]) {
+  async function handleDrop(e: React.DragEvent, newStatus: Activity["status"]) {
+    e.preventDefault();
     if (!dragId) return;
 
-    const activity = activities.find((a) => a.id === dragId);
-    if (!activity || activity.status === status) {
+    const draggedActivity = activities.find((a) => a.id === dragId);
+    if (!draggedActivity || draggedActivity.status === newStatus) {
       setDragId(null);
       return;
     }
 
-    const previous = activities;
-
-    setActivities((prev) =>
-      prev.map((a) => (a.id === dragId ? { ...a, status } : a)),
-    );
+    const payload = { ...draggedActivity, status: newStatus };
 
     try {
       const res = await fetch(`/api/activities/${dragId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: activity.title,
-          description: activity.description,
-          client: activity.client,
-          status,
-          categoryId: activity.categoryId,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const errorText = await res.text();
-        setActivities(previous);
         throw new Error(
-          `Erro ao mover card (status: ${res.status}): ${errorText}`,
+          `Erro ao atualizar status (status: ${res.status}): ${errorText}`,
         );
       }
 
       const updated = await res.json();
+
       setActivities((prev) =>
         prev.map((a) => (a.id === dragId ? updated : a)),
       );
     } catch (error) {
-      console.error("Erro ao mover atividade:", error);
-      setActivities(previous);
+      console.error("Erro ao atualizar status:", error);
       alert(
-        `Erro ao mover atividade: ${
+        `Erro ao atualizar status: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -283,15 +293,84 @@ export default function Activities() {
     }
   }
 
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+  }
+
+  // ---------- EDIT ----------
+  function startEdit(activity: Activity) {
+    setEditingId(activity.id);
+    setForm({
+      title: activity.title,
+      description: activity.description || "",
+      client: activity.client || "",
+      status: activity.status,
+      categoryId: activity.categoryId,
+    });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    const firstVisibleCat = cats.find((c) =>
+      ALLOWED_CATEGORIES.includes(
+        c.name as (typeof ALLOWED_CATEGORIES)[number],
+      ),
+    );
+    setForm({
+      title: "",
+      description: "",
+      client: "",
+      status: "Pendente",
+      categoryId: firstVisibleCat?.id || cats[0]?.id || "",
+    });
+  }
+
+  // ---------- SUMMARY BY CATEGORY ----------
+  const summaryByCategory = useMemo(() => {
+    return ALLOWED_CATEGORIES.map((categoryName) => {
+      const categoryId = cats.find(c => c.name === categoryName)?.id;
+      const count = activities.filter(a => a.categoryId === categoryId).length;
+      return { categoryName, count };
+    });
+  }, [activities, cats]);
+
+
+  // ---------- RENDER ----------
   return (
     <div className="space-y-6">
+      {/* Header interno das Atividades */}
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold text-slate-900">Atividades</h2>
-        <p className="text-xs text-slate-500">
-          Total: <span className="font-semibold">{activities.length}</span>
-        </p>
+        <div className="flex gap-4 text-xs text-slate-600">
+          {summaryByCategory.map((item) => (
+            <span key={item.categoryName}>
+              {item.categoryName}:{" "}
+              <strong className="text-slate-900">{item.count}</strong>
+            </span>
+          ))}
+        </div>
       </div>
 
+      {/* Abas por categoria */}
+      <div className="flex flex-wrap gap-2 text-xs">
+        {ALLOWED_CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => setActiveCategory(cat)}
+            className={
+              "px-3 py-1 rounded-full border text-[11px] transition " +
+              (activeCategory === cat
+                ? "bg-slate-900 text-slate-100 border-slate-900"
+                : "bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200")
+            }
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Formulário */}
       <form
         onSubmit={handleSubmit}
         className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-lg p-4"
@@ -304,27 +383,13 @@ export default function Activities() {
             onChange={(e) =>
               setForm((f) => ({ ...f, title: e.target.value }))
             }
-            placeholder="Ex: Estudar Next.js"
+            placeholder="Ex: Criar landing page, reunião com cliente..."
           />
         </div>
 
         <div className="space-y-2">
           <label className="text-xs font-medium text-slate-600">
-            Cliente / Contexto
-          </label>
-          <input
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
-            value={form.client}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, client: e.target.value }))
-            }
-            placeholder="Ex: Projeto X, Ministério Y..."
-          />
-        </div>
-
-        <div className="space-y-2 md:col-span-2">
-          <label className="text-xs font-medium text-slate-600">
-            Descrição
+            Descrição (opcional)
           </label>
           <textarea
             className="w-full min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
@@ -333,6 +398,20 @@ export default function Activities() {
               setForm((f) => ({ ...f, description: e.target.value }))
             }
             placeholder="Detalhes da atividade..."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-slate-600">
+            Cliente (opcional)
+          </label>
+          <input
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
+            value={form.client}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, client: e.target.value }))
+            }
+            placeholder="Nome do cliente"
           />
         </div>
 
@@ -348,17 +427,18 @@ export default function Activities() {
               }))
             }
           >
-            {/* Adicione as novas opções aqui */}
-            <option value="Pendente">Pendente</option>
-            <option value="Em andamento">Em andamento</option>
-            <option value="Aguardando Cliente">Aguardando Cliente</option> {/* NOVO */}
-            <option value="Pausado">Pausado</option> {/* NOVO */}
-            <option value="Concluído">Concluído</option>
+            {STATUS_COLUMNS.map((col) => (
+              <option key={col.id} value={col.id}>
+                {col.title}
+              </option>
+            ))}
           </select>
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">Categoria</label>
+          <label className="text-xs font-medium text-slate-600">
+            Categoria
+          </label>
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.categoryId}
@@ -366,10 +446,9 @@ export default function Activities() {
               setForm((f) => ({ ...f, categoryId: e.target.value }))
             }
           >
-            {cats.map((c) => (
+            {visibleCats.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
-                {c.custom ? " (custom)" : ""}
               </option>
             ))}
           </select>
@@ -395,38 +474,32 @@ export default function Activities() {
         </div>
       </form>
 
+      {/* Kanban Board */}
       {loading ? (
-        <p className="text-sm text-slate-500">Carregando...</p>
+        <p className="text-sm text-slate-500">Carregando atividades...</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {STATUS_COLUMNS.map((col) => (
             <div
               key={col.id}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => onDrop(col.id)}
-              className={`rounded-lg border-2 bg-slate-50 p-3 min-h-[250px] transition-colors ${col.color}`}
+              onDrop={(e) => handleDrop(e, col.id)}
+              onDragOver={handleDragOver}
+              className={`rounded-lg bg-slate-50 border-t-4 ${col.color} p-4 shadow-sm`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  {col.title}
-                </h3>
-                <span className="text-[11px] text-slate-500">
-                  {activities.filter((a) => a.status === col.id).length} itens
-                </span>
-              </div>
+              <h3 className="text-sm font-semibold text-slate-900 mb-3">
+                {col.title} (
+                {filteredActivities.filter((a) => a.status === col.id).length})
+              </h3>
 
-              <div className="space-y-2">
-                {activities
+              <div className="space-y-3 min-h-[100px]">
+                {filteredActivities
                   .filter((a) => a.status === col.id)
                   .map((a) => (
                     <article
                       key={a.id}
                       draggable
-                      onDragStart={() => onDragStart(a.id)}
-                      onDragEnd={onDragEnd}
-                      className={`rounded-md bg-white border border-slate-200 px-3 py-2 shadow-sm cursor-grab active:cursor-grabbing transition-opacity ${
-                        dragId === a.id ? "opacity-40" : "opacity-100"
-                      }`}
+                      onDragStart={(e) => handleDragStart(e, a.id)}
+                      className="rounded-md bg-white border border-slate-200 px-3 py-2 shadow-sm cursor-grab"
                     >
                       <header className="flex justify-between gap-2 mb-1">
                         <h4 className="text-sm font-medium text-slate-900">
@@ -438,7 +511,9 @@ export default function Activities() {
                       </header>
 
                       {a.client && (
-                        <p className="text-[11px] text-slate-500">{a.client}</p>
+                        <p className="text-[11px] text-slate-500">
+                          {a.client}
+                        </p>
                       )}
 
                       {a.description && (
@@ -466,7 +541,7 @@ export default function Activities() {
                     </article>
                   ))}
 
-                {activities.filter((a) => a.status === col.id).length === 0 && (
+                {filteredActivities.filter((a) => a.status === col.id).length === 0 && (
                   <p className="text-[11px] text-slate-400 text-center mt-4">
                     Solte aqui
                   </p>
