@@ -10,7 +10,7 @@
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:seed": "npx prisma db seed",
-    "postinstall": "npx prisma generate" /
+    "postinstall": "npx prisma generate" 
   },
   "dependencies": {
     "@prisma/client": "^5.15.0",
