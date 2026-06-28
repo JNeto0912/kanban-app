@@ -41,10 +41,15 @@ export default function Finance() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Estados para o filtro de mês e ano
+  const today = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1); // Mês atual (1-12)
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear()); // Ano atual
+
   const [form, setForm] = useState({
     title: "",
     amount: "",
-    dueDate: "",
+    dueDate: "", // Será preenchido com o 1º dia do mês/ano selecionado
     kind: "A pagar" as Entry["kind"],
     categoryId: "",
     partner: "",
@@ -94,11 +99,13 @@ export default function Finance() {
         ),
       );
 
+      // Define a categoria padrão do formulário
       setForm((prev) => ({
         ...prev,
         categoryId: prev.categoryId || firstVisibleCat?.id || catData[0]?.id || "",
       }));
 
+      // Define a categoria ativa padrão para as abas
       if (firstVisibleCat) {
         setActiveCategory(
           firstVisibleCat.name as (typeof ALLOWED_CATEGORIES)[number],
@@ -119,6 +126,14 @@ export default function Finance() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Atualiza a data de vencimento padrão do formulário quando o mês/ano muda
+  useEffect(() => {
+    const firstDayOfMonth = new Date(selectedYear, selectedMonth - 1, 1)
+      .toISOString()
+      .slice(0, 10);
+    setForm((prev) => ({ ...prev, dueDate: firstDayOfMonth }));
+  }, [selectedMonth, selectedYear]);
 
   // ---------- SUBMIT ----------
   async function handleSubmit(e: React.FormEvent) {
@@ -198,7 +213,9 @@ export default function Finance() {
       setForm({
         title: "",
         amount: "",
-        dueDate: "",
+        dueDate: new Date(selectedYear, selectedMonth - 1, 1) // Volta para o 1º dia do mês/ano selecionado
+          .toISOString()
+          .slice(0, 10),
         kind: "A pagar",
         categoryId: firstVisibleCat?.id || cats[0]?.id || "",
         partner: "",
@@ -309,7 +326,9 @@ export default function Finance() {
     setForm({
       title: "",
       amount: "",
-      dueDate: "",
+      dueDate: new Date(selectedYear, selectedMonth - 1, 1) // Volta para o 1º dia do mês/ano selecionado
+        .toISOString()
+        .slice(0, 10),
       kind: "A pagar",
       categoryId: firstVisibleCat?.id || cats[0]?.id || "",
       partner: "",
@@ -318,10 +337,22 @@ export default function Finance() {
     });
   }
 
+  // ---------- FILTRO POR MÊS/ANO ----------
+  const monthYearFilteredEntries = useMemo(() => {
+    return entries.filter((e) => {
+      const dueDate = new Date(e.dueDate);
+      return (
+        dueDate.getMonth() + 1 === selectedMonth &&
+        dueDate.getFullYear() === selectedYear
+      );
+    });
+  }, [entries, selectedMonth, selectedYear]);
+
   // ---------- SUMMARY (por categoria, pago/pendente) ----------
   const summaryByCategory = useMemo(() => {
     return ALLOWED_CATEGORIES.map((categoryName) => {
-      const items = entries.filter(
+      // Usa os lançamentos já filtrados por mês/ano
+      const items = monthYearFilteredEntries.filter(
         (entry) => entry.category?.name === categoryName,
       );
 
@@ -349,19 +380,66 @@ export default function Finance() {
         toReceiveReceived,
       };
     });
-  }, [entries]);
+  }, [monthYearFilteredEntries]); // Depende dos lançamentos filtrados por mês/ano
 
   // lançamentos filtrados pela categoria ativa (parte de baixo)
   const filteredEntries = useMemo(() => {
-    return entries.filter((e) => e.category?.name === activeCategory);
-  }, [entries, activeCategory]);
+    // Usa os lançamentos já filtrados por mês/ano
+    return monthYearFilteredEntries.filter(
+      (e) => e.category?.name === activeCategory,
+    );
+  }, [monthYearFilteredEntries, activeCategory]); // Depende dos lançamentos filtrados por mês/ano
 
   // ---------- RENDER ----------
+  const months = [
+    "Janeiro",
+    "Fevereiro",
+    "Março",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
+  ];
+
+  const years = Array.from({ length: 5 }, (_, i) => today.getFullYear() - 2 + i); // Ex: 2024, 2025, 2026, 2027, 2028
+
   return (
     <div className="space-y-6">
       {/* Resumo por categoria */}
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
+          <div className="flex gap-2 text-xs">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700"
+            >
+              {months.map((monthName, index) => (
+                <option key={index + 1} value={index + 1}>
+                  {monthName}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700"
+            >
+              {years.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {summaryByCategory.map((item) => (
@@ -644,7 +722,7 @@ export default function Finance() {
 
             {filteredEntries.length === 0 && (
               <p className="text-[11px] text-slate-400">
-                Nenhum lançamento para {activeCategory}.
+                Nenhum lançamento para {activeCategory} no mês/ano selecionado.
               </p>
             )}
           </div>
