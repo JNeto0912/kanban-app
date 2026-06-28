@@ -1,3 +1,4 @@
+// src/app/components/Activities.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,7 +8,8 @@ type Activity = {
   title: string;
   description: string;
   client: string;
-  status: "Pendente" | "Em andamento" | "Concluído";
+  // Atualize o tipo 'status' para incluir os novos valores
+  status: "Pendente" | "Em andamento" | "Aguardando Cliente" | "Pausado" | "Concluído";
   categoryId: string;
   category: { id: string; name: string };
   createdAt: string;
@@ -20,6 +22,7 @@ type Category = {
   custom: boolean;
 };
 
+// Adicione os novos status à lista de colunas
 const STATUS_COLUMNS: {
   id: Activity["status"];
   title: string;
@@ -27,6 +30,8 @@ const STATUS_COLUMNS: {
 }[] = [
   { id: "Pendente", title: "Pendente", color: "border-amber-400" },
   { id: "Em andamento", title: "Em andamento", color: "border-sky-400" },
+  { id: "Aguardando Cliente", title: "Aguardando Cliente", color: "border-purple-400" }, // Novo
+  { id: "Pausado", title: "Pausado", color: "border-gray-400" }, // Novo
   { id: "Concluído", title: "Concluído", color: "border-emerald-400" },
 ];
 
@@ -343,8 +348,11 @@ export default function Activities() {
               }))
             }
           >
+            {/* Adicione as novas opções aqui */}
             <option value="Pendente">Pendente</option>
             <option value="Em andamento">Em andamento</option>
+            <option value="Aguardando Cliente">Aguardando Cliente</option> {/* NOVO */}
+            <option value="Pausado">Pausado</option> {/* NOVO */}
             <option value="Concluído">Concluído</option>
           </select>
         </div>

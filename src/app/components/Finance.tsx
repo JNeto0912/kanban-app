@@ -25,6 +25,15 @@ type Category = {
   custom: boolean;
 };
 
+const ALLOWED_CATEGORIES = ["Trabalho", "Igreja", "Particular"] as const;
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
 export default function Finance() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [cats, setCats] = useState<Category[]>([]);
@@ -41,6 +50,20 @@ export default function Finance() {
     notes: "",
     recurring: false,
   });
+
+  // categoria atualmente selecionada para filtrar a lista
+  const [activeCategory, setActiveCategory] = useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
+
+  // somente as categorias permitidas
+  const visibleCats = useMemo(
+    () =>
+      cats.filter((c) =>
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
+      ),
+    [cats],
+  );
 
   // ---------- LOAD ----------
   async function loadData() {
@@ -74,10 +97,22 @@ export default function Finance() {
       setEntries(entData);
       setCats(catData);
 
+      const firstVisibleCat = catData.find((c: Category) =>
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
+      );
+
       setForm((prev) => ({
         ...prev,
-        categoryId: prev.categoryId || catData[0]?.id || "",
+        categoryId: prev.categoryId || firstVisibleCat?.id || "",
       }));
+
+      if (firstVisibleCat) {
+        setActiveCategory(
+          firstVisibleCat.name as (typeof ALLOWED_CATEGORIES)[number],
+        );
+      }
     } catch (error) {
       console.error("Erro ao carregar financeiro:", error);
       alert(
@@ -163,12 +198,14 @@ export default function Finance() {
         setEntries((prev) => [data, ...prev]);
       }
 
+      const firstVisibleCat = visibleCats[0];
+
       setForm({
         title: "",
         amount: "",
         dueDate: "",
         kind: "A pagar",
-        categoryId: cats[0]?.id || "",
+        categoryId: firstVisibleCat?.id || "",
         partner: "",
         notes: "",
         recurring: false,
@@ -264,54 +301,116 @@ export default function Finance() {
       notes: entry.notes,
       recurring: entry.recurring,
     });
+
+    if (entry.category?.name && ALLOWED_CATEGORIES.includes(entry.category.name as any)) {
+      setActiveCategory(entry.category.name as (typeof ALLOWED_CATEGORIES)[number]);
+    }
   }
 
   function cancelEdit() {
     setEditingId(null);
+    const firstVisibleCat = visibleCats[0];
     setForm({
       title: "",
       amount: "",
       dueDate: "",
       kind: "A pagar",
-      categoryId: cats[0]?.id || "",
+      categoryId: firstVisibleCat?.id || "",
       partner: "",
       notes: "",
       recurring: false,
     });
   }
 
-  // ---------- SUMMARY ----------
-  const summary = useMemo(() => {
-    let toPay = 0;
-    let toReceive = 0;
+  // ---------- RESUMO POR CATEGORIA ----------
+  const summaryByCategory = useMemo(() => {
+    return ALLOWED_CATEGORIES.map((categoryName) => {
+      const items = entries.filter(
+        (entry) => entry.category?.name === categoryName,
+      );
 
-    for (const e of entries) {
-      if (!e.paid && e.kind === "A pagar") toPay += e.amount;
-      if (!e.paid && e.kind === "A receber") toReceive += e.amount;
-    }
+      const toPay = items
+        .filter((entry) => entry.kind === "A pagar")
+        .reduce((sum, entry) => sum + entry.amount, 0);
 
-    return { toPay, toReceive };
+      const toReceive = items
+        .filter((entry) => entry.kind === "A receber")
+        .reduce((sum, entry) => sum + entry.amount, 0);
+
+      return {
+        categoryName,
+        toPay,
+        toReceive,
+      };
+    });
   }, [entries]);
+
+  // ---------- FILTRO PARA LISTA ----------
+  const filteredEntries = useMemo(() => {
+    return entries.filter(
+      (e) => e.category?.name === activeCategory,
+    );
+  }, [entries, activeCategory]);
 
   // ---------- RENDER ----------
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
-        <div className="flex gap-4 text-xs text-slate-600">
-          <span>
-            A pagar:{" "}
-            <strong className="text-amber-600">
-              R$ {summary.toPay.toFixed(2)}
-            </strong>
-          </span>
-          <span>
-            A receber:{" "}
-            <strong className="text-emerald-600">
-              R$ {summary.toReceive.toFixed(2)}
-            </strong>
-          </span>
+      {/* Header + resumo por categoria */}
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
+
+          {/* resumo global A pagar / A receber */}
+          <div className="text-xs text-slate-600">
+            {(() => {
+              const totalToPay = entries
+                .filter((e) => e.kind === "A pagar")
+                .reduce((sum, e) => sum + e.amount, 0);
+              const totalToReceive = entries
+                .filter((e) => e.kind === "A receber")
+                .reduce((sum, e) => sum + e.amount, 0);
+
+              return (
+                <>
+                  A pagar:{" "}
+                  <span className="text-amber-600 font-semibold">
+                    {formatCurrency(totalToPay)}
+                  </span>{" "}
+                  • A receber:{" "}
+                  <span className="text-emerald-600 font-semibold">
+                    {formatCurrency(totalToReceive)}
+                  </span>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {summaryByCategory.map((item) => (
+            <div
+              key={item.categoryName}
+              className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2"
+            >
+              <p className="text-[11px] font-semibold text-slate-700 mb-1">
+                {item.categoryName}
+              </p>
+
+              <p className="text-[11px] text-slate-600">
+                A pagar:{" "}
+                <strong className="text-amber-600">
+                  {formatCurrency(item.toPay)}
+                </strong>
+              </p>
+
+              <p className="text-[11px] text-slate-600">
+                A receber:{" "}
+                <strong className="text-emerald-600">
+                  {formatCurrency(item.toReceive)}
+                </strong>
+              </p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -385,7 +484,7 @@ export default function Finance() {
               setForm((f) => ({ ...f, categoryId: e.target.value }))
             }
           >
-            {cats.map((c) => (
+            {visibleCats.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
@@ -454,87 +553,107 @@ export default function Finance() {
         </div>
       </form>
 
-      {/* Lista */}
-      {loading ? (
-        <p className="text-sm text-slate-500">Carregando...</p>
-      ) : (
-        <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-          {entries.map((e) => (
-            <article
-              key={e.id}
-              className="rounded-md bg-white border border-slate-200 px-3 py-2 shadow-sm flex justify-between gap-3 items-start"
+      {/* Abas por categoria + lista filtrada */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2 text-xs">
+          {ALLOWED_CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={
+                "px-3 py-1 rounded-full border text-[11px] transition " +
+                (activeCategory === cat
+                  ? "bg-slate-900 text-slate-100 border-slate-900"
+                  : "bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200")
+              }
             >
-              <div>
-                <h4 className="text-sm font-medium text-slate-900">
-                  {e.title}
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  {e.category?.name} •{" "}
-                  {new Date(e.dueDate).toLocaleDateString("pt-BR")}
-                </p>
-                {e.partner && (
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-slate-500">Carregando...</p>
+        ) : (
+          <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+            {filteredEntries.map((e) => (
+              <article
+                key={e.id}
+                className="rounded-md bg-white border border-slate-200 px-3 py-2 shadow-sm flex justify-between gap-3 items-start"
+              >
+                <div>
+                  <h4 className="text-sm font-medium text-slate-900">
+                    {e.title}
+                  </h4>
                   <p className="text-[11px] text-slate-500">
-                    Parceiro: {e.partner}
+                    {e.category?.name} •{" "}
+                    {new Date(e.dueDate).toLocaleDateString("pt-BR")}
                   </p>
-                )}
-                {e.notes && (
-                  <p className="mt-1 text-[11px] text-slate-600">
-                    {e.notes}
+                  {e.partner && (
+                    <p className="text-[11px] text-slate-500">
+                      Parceiro: {e.partner}
+                    </p>
+                  )}
+                  {e.notes && (
+                    <p className="mt-1 text-[11px] text-slate-600">
+                      {e.notes}
+                    </p>
+                  )}
+                </div>
+
+                <div className="text-right">
+                  <p className="text-sm font-semibold">
+                    {formatCurrency(e.amount)}
                   </p>
-                )}
-              </div>
-
-              <div className="text-right">
-                <p className="text-sm font-semibold">
-                  R$ {e.amount.toFixed(2)}
-                </p>
-                <p
-                  className={
-                    "text-[11px] " +
-                    (e.kind === "A pagar"
-                      ? "text-amber-600"
-                      : "text-emerald-600")
-                  }
-                >
-                  {e.kind}
-                </p>
-
-                <div className="mt-2 flex gap-2 justify-end">
-                  <button
-                    onClick={() => togglePaid(e.id)}
+                  <p
                     className={
-                      "text-[11px] px-2 py-[3px] rounded-md border " +
-                      (e.paid
-                        ? "border-emerald-500 text-emerald-600 bg-emerald-50"
-                        : "border-slate-300 text-slate-600 hover:bg-slate-50")
+                      "text-[11px] " +
+                      (e.kind === "A pagar"
+                        ? "text-amber-600"
+                        : "text-emerald-600")
                     }
                   >
-                    {e.paid ? "Pago" : "Marcar pago"}
-                  </button>
-                  <button
-                    onClick={() => startEdit(e)}
-                    className="text-[11px] text-slate-600 hover:text-slate-900"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => handleDelete(e.id)}
-                    className="text-[11px] text-red-500 hover:text-red-700"
-                  >
-                    Excluir
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
+                    {e.kind}
+                  </p>
 
-          {entries.length === 0 && (
-            <p className="text-[11px] text-slate-400">
-              Nenhum lançamento cadastrado.
-            </p>
-          )}
-        </div>
-      )}
+                  <div className="mt-2 flex gap-2 justify-end">
+                    <button
+                      onClick={() => togglePaid(e.id)}
+                      className={
+                        "text-[11px] px-2 py-[3px] rounded-md border " +
+                        (e.paid
+                          ? "border-emerald-500 text-emerald-600 bg-emerald-50"
+                          : "border-slate-300 text-slate-600 hover:bg-slate-50")
+                      }
+                    >
+                      {e.paid ? "Pago" : "Marcar pago"}
+                    </button>
+                    <button
+                      onClick={() => startEdit(e)}
+                      className="text-[11px] text-slate-600 hover:text-slate-900"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDelete(e.id)}
+                      className="text-[11px] text-red-500 hover:text-red-700"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+
+            {filteredEntries.length === 0 && (
+              <p className="text-[11px] text-slate-400">
+                Nenhum lançamento para {activeCategory}.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

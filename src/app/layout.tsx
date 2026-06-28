@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
+import DashboardHeaderSummary from "./components/DashboardHeaderSummary"; // Importe o novo componente
 
 export const metadata: Metadata = {
   title: "Dashboard - Atividades e Financeiro",
@@ -22,6 +23,8 @@ export default function RootLayout({
           <h1 className="text-2xl font-semibold mt-1">
             Atividades e Financeiro
           </h1>
+          {/* Renderiza o resumo no cabeçalho */}
+          <DashboardHeaderSummary />
         </header>
 
         <main className="px-10 py-8 space-y-10">{children}</main>
