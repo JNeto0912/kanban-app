@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+// ---------- tipos ----------
 type Activity = {
   id: string;
   title: string;
@@ -15,154 +16,250 @@ type Activity = {
   updatedAt: string;
 };
 
+type ActivityLog = {
+  id: string;
+  activityId: string;
+  note: string;
+  createdAt: string;
+};
+
 type Category = {
   id: string;
   name: string;
   custom: boolean;
 };
 
-// Definindo as categorias permitidas para atividades
 const ALLOWED_CATEGORIES = ["Trabalho", "Igreja", "Particular"] as const;
 
-// Adicione os novos status à lista de colunas
 const STATUS_COLUMNS: {
   id: Activity["status"];
   title: string;
   color: string;
 }[] = [
-  { id: "Pendente", title: "Pendente", color: "border-amber-400" },
-  { id: "Em andamento", title: "Em andamento", color: "border-sky-400" },
-  { id: "Aguardando Cliente", title: "Aguardando Cliente", color: "border-purple-400" },
-  { id: "Pausado", title: "Pausado", color: "border-gray-400" },
-  { id: "Concluído", title: "Concluído", color: "border-emerald-400" },
+  { id: "Pendente",           title: "Pendente",           color: "border-amber-400"   },
+  { id: "Em andamento",       title: "Em andamento",       color: "border-sky-400"     },
+  { id: "Aguardando Cliente", title: "Aguardando Cliente", color: "border-purple-400"  },
+  { id: "Pausado",            title: "Pausado",            color: "border-gray-400"    },
+  { id: "Concluído",          title: "Concluído",          color: "border-emerald-400" },
 ];
 
+// ---------- helper ----------
+function formatDateTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleString("pt-BR", {
+    day:    "2-digit",
+    month:  "2-digit",
+    year:   "numeric",
+    hour:   "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// ---------- componente de logs ----------
+function ActivityLogs({ activityId }: { activityId: string }) {
+  const [logs, setLogs]       = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [note, setNote]       = useState("");
+  const [saving, setSaving]   = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchLogs() {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/activities/${activityId}/logs`);
+        if (!res.ok) throw new Error("Erro ao buscar movimentações");
+        const data = await res.json();
+        if (!cancelled) setLogs(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchLogs();
+    return () => { cancelled = true; };
+  }, [activityId]);
+
+  async function handleAddLog() {
+    if (!note.trim()) return;
+    try {
+      setSaving(true);
+      const res = await fetch(`/api/activities/${activityId}/logs`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ note: note.trim() }),
+      });
+      if (!res.ok) throw new Error("Erro ao registrar movimentação");
+      const created: ActivityLog = await res.json();
+      setLogs((prev) => [created, ...prev]);
+      setNote("");
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao registrar movimentação.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteLog(logId: string) {
+    if (!confirm("Excluir esta movimentação?")) return;
+    try {
+      const res = await fetch(
+        `/api/activities/${activityId}/logs/${logId}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("Erro ao excluir");
+      setLogs((prev) => prev.filter((l) => l.id !== logId));
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao excluir movimentação.");
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3 space-y-3">
+      {/* campo para nova movimentação */}
+      <div className="flex gap-1.5">
+        <input
+          className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] placeholder:text-slate-400"
+          placeholder="Nova observação..."
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleAddLog();
+            }
+          }}
+        />
+        <button
+          onClick={handleAddLog}
+          disabled={saving || !note.trim()}
+          className="rounded-md bg-slate-800 text-white text-[10px] px-2 py-1 hover:bg-slate-700 disabled:opacity-40"
+        >
+          {saving ? "..." : "Registrar"}
+        </button>
+      </div>
+
+      {/* lista de logs */}
+      {loading ? (
+        <p className="text-[10px] text-slate-400">Carregando...</p>
+      ) : logs.length === 0 ? (
+        <p className="text-[10px] text-slate-400">Nenhuma movimentação ainda.</p>
+      ) : (
+        <ul className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+          {logs.map((log) => (
+            <li
+              key={log.id}
+              className="rounded-md bg-slate-50 border border-slate-100 px-2 py-1.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[11px] text-slate-700 leading-snug flex-1">
+                  {log.note}
+                </p>
+                <button
+                  onClick={() => handleDeleteLog(log.id)}
+                  className="text-[9px] text-red-400 hover:text-red-600 shrink-0 mt-0.5"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-[9px] text-slate-400 mt-0.5">
+                {formatDateTime(log.createdAt)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------- componente principal ----------
 export default function Activities() {
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [cats, setCats] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [cats, setCats]             = useState<Category[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [dragId, setDragId]         = useState<string | null>(null);
+  const [editingId, setEditingId]   = useState<string | null>(null);
 
-  // Estado para a categoria ativa
-  const [activeCategory, setActiveCategory] = useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
+  // id do card com painel de logs aberto
+  const [openLogId, setOpenLogId]   = useState<string | null>(null);
+
+  const [activeCategory, setActiveCategory] =
+    useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
 
   const [form, setForm] = useState({
-    title: "",
+    title:       "",
     description: "",
-    client: "",
-    status: "Pendente" as Activity["status"],
-    categoryId: "",
+    client:      "",
+    status:      "Pendente" as Activity["status"],
+    categoryId:  "",
   });
 
-  // Somente as categorias permitidas
   const visibleCats = useMemo(
-    () =>
-      cats.filter((c) =>
-        ALLOWED_CATEGORIES.includes(
-          c.name as (typeof ALLOWED_CATEGORIES)[number],
-        ),
-      ),
+    () => cats.filter((c) =>
+      ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
+    ),
     [cats],
   );
 
-  // Atividades filtradas pela categoria ativa
   const filteredActivities = useMemo(() => {
-    const activeCatId = visibleCats.find(c => c.name === activeCategory)?.id;
+    const activeCatId = visibleCats.find((c) => c.name === activeCategory)?.id;
     if (!activeCatId) return [];
-    return activities.filter(a => a.categoryId === activeCatId);
+    return activities.filter((a) => a.categoryId === activeCatId);
   }, [activities, activeCategory, visibleCats]);
 
-
-  // ---------- LOAD ----------
+  // ---------- load ----------
   async function loadData() {
     try {
       setLoading(true);
-
       const [actRes, catRes] = await Promise.all([
         fetch("/api/activities"),
         fetch("/api/activity-cats"),
       ]);
-
-      if (!actRes.ok) {
-        const errorText = await actRes.text();
-        throw new Error(
-          `Erro ao carregar atividades (status: ${actRes.status}): ${errorText}`,
-        );
-      }
-
-      if (!catRes.ok) {
-        const errorText = await catRes.text();
-        throw new Error(
-          `Erro ao carregar categorias (status: ${catRes.status}): ${errorText}`,
-        );
-      }
-
-      const [actData, catData] = await Promise.all([
-        actRes.json(),
-        catRes.json(),
-      ]);
-
+      if (!actRes.ok || !catRes.ok) throw new Error("Erro ao carregar dados");
+      const [actData, catData] = await Promise.all([actRes.json(), catRes.json()]);
       setActivities(actData);
       setCats(catData);
-
-      // Define a categoria padrão para o formulário
       const firstVisibleCat = catData.find((c: Category) =>
-        ALLOWED_CATEGORIES.includes(
-          c.name as (typeof ALLOWED_CATEGORIES)[number],
-        ),
+        ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
       );
       setForm((prev) => ({
         ...prev,
         categoryId: prev.categoryId || firstVisibleCat?.id || catData[0]?.id || "",
       }));
-
-      // Define a categoria ativa para as abas
-      if (firstVisibleCat) {
+      if (firstVisibleCat)
         setActiveCategory(firstVisibleCat.name as (typeof ALLOWED_CATEGORIES)[number]);
-      }
-
     } catch (error) {
-      console.error("Erro ao carregar atividades:", error);
-      alert(
-        `Erro ao carregar dados: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      console.error(error);
+      alert(`Erro ao carregar dados: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
-  // ---------- SUBMIT ----------
+  // ---------- submit ----------
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
-    if (!form.title.trim()) {
-      alert("Informe um título para a atividade.");
-      return;
-    }
-
-    if (!form.categoryId) {
-      alert("Selecione uma categoria.");
-      return;
-    }
+    if (!form.title.trim())   { alert("Informe um título.");     return; }
+    if (!form.categoryId)     { alert("Selecione uma categoria."); return; }
 
     const payload = {
-      title: form.title,
+      title:       form.title,
       description: form.description,
-      client: form.client,
-      status: form.status,
-      categoryId: form.categoryId,
+      client:      form.client,
+      status:      form.status,
+      categoryId:  form.categoryId,
     };
 
     try {
       let res: Response;
-
       if (editingId) {
         res = await fetch(`/api/activities/${editingId}`, {
           method: "PUT",
@@ -176,76 +273,39 @@ export default function Activities() {
           body: JSON.stringify(payload),
         });
       }
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(
-          `Erro ao salvar atividade (status: ${res.status}): ${errorText}`,
-        );
-      }
-
+      if (!res.ok) throw new Error("Erro ao salvar atividade");
       const data = await res.json();
-
       if (editingId) {
-        setActivities((prev) =>
-          prev.map((a) => (a.id === editingId ? data : a)),
-        );
+        setActivities((prev) => prev.map((a) => (a.id === editingId ? data : a)));
       } else {
         setActivities((prev) => [data, ...prev]);
       }
-
-      // Reset formulário
-      const firstVisibleCat = cats.find((c) =>
-        ALLOWED_CATEGORIES.includes(
-          c.name as (typeof ALLOWED_CATEGORIES)[number],
-        ),
+      const firstCat = cats.find((c) =>
+        ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
       );
-      setForm({
-        title: "",
-        description: "",
-        client: "",
-        status: "Pendente",
-        categoryId: firstVisibleCat?.id || cats[0]?.id || "",
-      });
+      setForm({ title: "", description: "", client: "", status: "Pendente", categoryId: firstCat?.id || cats[0]?.id || "" });
       setEditingId(null);
     } catch (error) {
-      console.error("Erro ao salvar atividade:", error);
-      alert(
-        `Erro ao salvar atividade: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      console.error(error);
+      alert(`Erro ao salvar atividade: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  // ---------- DELETE ----------
+  // ---------- delete ----------
   async function handleDelete(id: string) {
     if (!confirm("Excluir esta atividade?")) return;
-
     try {
-      const res = await fetch(`/api/activities/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(
-          `Erro ao excluir atividade (status: ${res.status}): ${errorText}`,
-        );
-      }
-
+      const res = await fetch(`/api/activities/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Erro ao excluir");
       setActivities((prev) => prev.filter((a) => a.id !== id));
+      if (openLogId === id) setOpenLogId(null);
     } catch (error) {
-      console.error("Erro ao excluir atividade:", error);
-      alert(
-        `Erro ao excluir atividade: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      console.error(error);
+      alert(`Erro ao excluir: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  // ---------- DRAG & DROP ----------
+  // ---------- drag & drop ----------
   function handleDragStart(e: React.DragEvent, id: string) {
     setDragId(id);
   }
@@ -253,92 +313,60 @@ export default function Activities() {
   async function handleDrop(e: React.DragEvent, newStatus: Activity["status"]) {
     e.preventDefault();
     if (!dragId) return;
-
-    const draggedActivity = activities.find((a) => a.id === dragId);
-    if (!draggedActivity || draggedActivity.status === newStatus) {
-      setDragId(null);
-      return;
-    }
-
-    const payload = { ...draggedActivity, status: newStatus };
-
+    const dragged = activities.find((a) => a.id === dragId);
+    if (!dragged || dragged.status === newStatus) { setDragId(null); return; }
     try {
       const res = await fetch(`/api/activities/${dragId}`, {
-        method: "PUT",
+        method:  "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body:    JSON.stringify({ ...dragged, status: newStatus }),
       });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(
-          `Erro ao atualizar status (status: ${res.status}): ${errorText}`,
-        );
-      }
-
+      if (!res.ok) throw new Error("Erro ao mover card");
       const updated = await res.json();
-
-      setActivities((prev) =>
-        prev.map((a) => (a.id === dragId ? updated : a)),
-      );
+      setActivities((prev) => prev.map((a) => (a.id === dragId ? updated : a)));
     } catch (error) {
-      console.error("Erro ao atualizar status:", error);
-      alert(
-        `Erro ao atualizar status: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      console.error(error);
+      alert(`Erro ao mover card: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setDragId(null);
     }
   }
 
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-  }
+  function handleDragOver(e: React.DragEvent) { e.preventDefault(); }
 
-  // ---------- EDIT ----------
+  // ---------- edit ----------
   function startEdit(activity: Activity) {
     setEditingId(activity.id);
     setForm({
-      title: activity.title,
+      title:       activity.title,
       description: activity.description || "",
-      client: activity.client || "",
-      status: activity.status,
-      categoryId: activity.categoryId,
+      client:      activity.client || "",
+      status:      activity.status,
+      categoryId:  activity.categoryId,
     });
   }
 
   function cancelEdit() {
     setEditingId(null);
-    const firstVisibleCat = cats.find((c) =>
-      ALLOWED_CATEGORIES.includes(
-        c.name as (typeof ALLOWED_CATEGORIES)[number],
-      ),
+    const firstCat = cats.find((c) =>
+      ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
     );
-    setForm({
-      title: "",
-      description: "",
-      client: "",
-      status: "Pendente",
-      categoryId: firstVisibleCat?.id || cats[0]?.id || "",
-    });
+    setForm({ title: "", description: "", client: "", status: "Pendente", categoryId: firstCat?.id || cats[0]?.id || "" });
   }
 
-  // ---------- SUMMARY BY CATEGORY ----------
+  // ---------- summary ----------
   const summaryByCategory = useMemo(() => {
     return ALLOWED_CATEGORIES.map((categoryName) => {
-      const categoryId = cats.find(c => c.name === categoryName)?.id;
-      const count = activities.filter(a => a.categoryId === categoryId).length;
+      const categoryId = cats.find((c) => c.name === categoryName)?.id;
+      const count = activities.filter((a) => a.categoryId === categoryId).length;
       return { categoryName, count };
     });
   }, [activities, cats]);
 
-
-  // ---------- RENDER ----------
+  // ---------- render ----------
   return (
     <div className="space-y-6">
-      {/* Header interno das Atividades */}
+      {/* header */}
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-semibold text-slate-900">Atividades</h2>
         <div className="flex gap-4 text-xs text-slate-600">
@@ -351,8 +379,8 @@ export default function Activities() {
         </div>
       </div>
 
-      {/* Abas por categoria */}
-      <div className="flex flex-wrap gap-2 text-xs">
+      {/* abas de categoria */}
+      <div className="flex flex-wrap gap-2">
         {ALLOWED_CATEGORIES.map((cat) => (
           <button
             key={cat}
@@ -370,7 +398,7 @@ export default function Activities() {
         ))}
       </div>
 
-      {/* Formulário */}
+      {/* formulário */}
       <form
         onSubmit={handleSubmit}
         className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-lg p-4"
@@ -380,37 +408,27 @@ export default function Activities() {
           <input
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.title}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, title: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             placeholder="Ex: Criar landing page, reunião com cliente..."
           />
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Descrição (opcional)
-          </label>
+          <label className="text-xs font-medium text-slate-600">Descrição (opcional)</label>
           <textarea
             className="w-full min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.description}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, description: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             placeholder="Detalhes da atividade..."
           />
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Cliente (opcional)
-          </label>
+          <label className="text-xs font-medium text-slate-600">Cliente (opcional)</label>
           <input
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.client}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, client: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, client: e.target.value }))}
             placeholder="Nome do cliente"
           />
         </div>
@@ -420,36 +438,23 @@ export default function Activities() {
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.status}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                status: e.target.value as Activity["status"],
-              }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as Activity["status"] }))}
           >
             {STATUS_COLUMNS.map((col) => (
-              <option key={col.id} value={col.id}>
-                {col.title}
-              </option>
+              <option key={col.id} value={col.id}>{col.title}</option>
             ))}
           </select>
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Categoria
-          </label>
+          <label className="text-xs font-medium text-slate-600">Categoria</label>
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.categoryId}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, categoryId: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
           >
             {visibleCats.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
@@ -461,7 +466,6 @@ export default function Activities() {
           >
             {editingId ? "Salvar alterações" : "Adicionar atividade"}
           </button>
-
           {editingId && (
             <button
               type="button"
@@ -474,7 +478,7 @@ export default function Activities() {
         </div>
       </form>
 
-      {/* Kanban Board */}
+      {/* kanban */}
       {loading ? (
         <p className="text-sm text-slate-500">Carregando atividades...</p>
       ) : (
@@ -487,8 +491,7 @@ export default function Activities() {
               className={`rounded-lg bg-slate-50 border-t-4 ${col.color} p-4 shadow-sm`}
             >
               <h3 className="text-sm font-semibold text-slate-900 mb-3">
-                {col.title} (
-                {filteredActivities.filter((a) => a.status === col.id).length})
+                {col.title} ({filteredActivities.filter((a) => a.status === col.id).length})
               </h3>
 
               <div className="space-y-3 min-h-[100px]">
@@ -499,45 +502,64 @@ export default function Activities() {
                       key={a.id}
                       draggable
                       onDragStart={(e) => handleDragStart(e, a.id)}
-                      className="rounded-md bg-white border border-slate-200 px-3 py-2 shadow-sm cursor-grab"
+                      className="rounded-md bg-white border border-slate-200 px-3 py-2 shadow-sm cursor-grab active:cursor-grabbing"
                     >
+                      {/* cabeçalho do card */}
                       <header className="flex justify-between gap-2 mb-1">
-                        <h4 className="text-sm font-medium text-slate-900">
+                        <h4 className="text-sm font-medium text-slate-900 leading-snug">
                           {a.title}
                         </h4>
-                        <span className="text-[11px] text-slate-400">
+                        <span className="text-[11px] text-slate-400 shrink-0">
                           {a.category?.name}
                         </span>
                       </header>
 
                       {a.client && (
-                        <p className="text-[11px] text-slate-500">
-                          {a.client}
-                        </p>
+                        <p className="text-[11px] text-slate-500">{a.client}</p>
                       )}
 
                       {a.description && (
-                        <p className="mt-1 text-[11px] text-slate-600">
-                          {a.description}
-                        </p>
+                        <p className="mt-1 text-[11px] text-slate-600">{a.description}</p>
                       )}
 
-                      <footer className="mt-2 flex justify-end gap-2">
+                      {/* footer do card */}
+                      <footer className="mt-2 flex justify-between items-center gap-2">
+                        {/* botão movimentações */}
                         <button
                           type="button"
-                          onClick={() => startEdit(a)}
-                          className="text-[11px] text-slate-600 hover:text-slate-900"
+                          onClick={() =>
+                            setOpenLogId((prev) => (prev === a.id ? null : a.id))
+                          }
+                          className={
+                            "text-[10px] px-2 py-0.5 rounded-full border transition " +
+                            (openLogId === a.id
+                              ? "bg-slate-800 text-white border-slate-800"
+                              : "border-slate-300 text-slate-500 hover:bg-slate-100")
+                          }
                         >
-                          Editar
+                          {openLogId === a.id ? "Fechar" : "Movimentações"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(a.id)}
-                          className="text-[11px] text-red-500 hover:text-red-700"
-                        >
-                          Excluir
-                        </button>
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(a)}
+                            className="text-[11px] text-slate-600 hover:text-slate-900"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(a.id)}
+                            className="text-[11px] text-red-500 hover:text-red-700"
+                          >
+                            Excluir
+                          </button>
+                        </div>
                       </footer>
+
+                      {/* painel de movimentações */}
+                      {openLogId === a.id && <ActivityLogs activityId={a.id} />}
                     </article>
                   ))}
 

@@ -2,13 +2,11 @@
 
 generator client {
   provider = "prisma-client-js"
-  // Se você tiver uma linha 'output = "..."' aqui, remova-a
-  // para que o Prisma Client seja gerado no local padrão.
 }
 
 datasource db {
-  provider = "postgresql" // Ou "mysql", "sqlite", etc.
-  url      = env("DATABASE_URL") // Use DATABASE_URL aqui
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model ActivityCategory {
@@ -22,13 +20,22 @@ model ActivityCategory {
 model Activity {
   id          String           @id @default(cuid())
   title       String
-  description String           @default("")
-  client      String           @default("")
+  description String?
+  client      String?
   status      String           @default("Pendente")
-  category    ActivityCategory @relation(fields: [categoryId], references: [id])
   categoryId  String
+  category    ActivityCategory @relation(fields: [categoryId], references: [id]) // ← corrigido: era "Category", agora é "ActivityCategory"
+  logs        ActivityLog[]    // ← adicionado
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  note       String
+  createdAt  DateTime @default(now())
 }
 
 model FinanceCategory {
@@ -41,18 +48,21 @@ model FinanceCategory {
 }
 
 model FinanceEntry {
-  id         String          @id @default(cuid())
-  title      String
-  amount     Float
-  dueDate    DateTime
-  kind       String          @default("A pagar")
-  category   FinanceCategory @relation(fields: [categoryId], references: [id])
-  categoryId String
-  partner    String          @default("")
-  notes      String          @default("")
-  recurring  Boolean         @default(false)
-  paid       Boolean         @default(false)
-  paidAt     DateTime?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  title            String
+  amount           Float
+  dueDate          DateTime
+  kind             String          @default("A pagar")
+  category         FinanceCategory @relation(fields: [categoryId], references: [id])
+  categoryId       String
+  partner          String          @default("")
+  notes            String          @default("")
+  recurring        Boolean         @default(false)
+  paid             Boolean         @default(false)
+  paidAt           DateTime?
+  generatedFromId  String?
+  generatedFrom    FinanceEntry?   @relation("FinanceEntryRecurrence", fields: [generatedFromId], references: [id], onDelete: SetNull)
+  generatedChildren FinanceEntry[]  @relation("FinanceEntryRecurrence")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 }
