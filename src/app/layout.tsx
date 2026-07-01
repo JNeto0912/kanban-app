@@ -22,8 +22,8 @@ export default function RootLayout({
             <Image
               src="/resolult.png" // Caminho para o seu logo na pasta public
               alt="Logo Resolult"
-              width={80} // Ajuste a largura conforme necessário
-              height={80} // Ajuste a altura conforme necessário
+              width={160} // Ajuste a largura conforme necessário
+              height={160} // Ajuste a altura conforme necessário
               className="rounded-full" // Exemplo de estilo, ajuste se precisar
             />
             <div>
@@ -34,7 +34,7 @@ export default function RootLayout({
 
           {/* Subtítulo do Dashboard */}
           <p className="uppercase text-xs tracking-[0.3em] text-slate-400 mt-4">
-            Dashboard
+            Painel de controle de atividades e financeiro
           </p>
           <h2 className="text-2xl font-semibold mt-1">
             Atividades e Financeiro
