@@ -48,21 +48,22 @@ model FinanceCategory {
 }
 
 model FinanceEntry {
-  id               String          @id @default(cuid())
-  title            String
-  amount           Float
-  dueDate          DateTime
-  kind             String          @default("A pagar")
-  category         FinanceCategory @relation(fields: [categoryId], references: [id])
-  categoryId       String
-  partner          String          @default("")
-  notes            String          @default("")
-  recurring        Boolean         @default(false)
-  paid             Boolean         @default(false)
-  paidAt           DateTime?
-  generatedFromId  String?
-  generatedFrom    FinanceEntry?   @relation("FinanceEntryRecurrence", fields: [generatedFromId], references: [id], onDelete: SetNull)
+  id                String          @id @default(cuid())
+  title             String
+  amount            Float
+  dueDate           DateTime
+  kind              String          @default("A pagar")
+  category          FinanceCategory @relation(fields: [categoryId], references: [id])
+  categoryId        String
+  partner           String          @default("")
+  notes             String          @default("")
+  recurring         Boolean         @default(false)
+  confirmed         Boolean         @default(false)   // ← novo campo
+  paid              Boolean         @default(false)
+  paidAt            DateTime?
+  generatedFromId   String?
+  generatedFrom     FinanceEntry?   @relation("FinanceEntryRecurrence", fields: [generatedFromId], references: [id], onDelete: SetNull)
   generatedChildren FinanceEntry[]  @relation("FinanceEntryRecurrence")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }

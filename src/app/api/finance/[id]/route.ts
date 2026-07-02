@@ -1,3 +1,4 @@
+// src/app/api/finance/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -10,11 +11,9 @@ function addOneMonth(date: Date) {
   const next = new Date(date);
   const day = next.getDate();
 
-  // Vai para o primeiro dia do próximo mês
   next.setDate(1);
   next.setMonth(next.getMonth() + 1);
 
-  // Ajusta o dia para o último dia do mês caso o mês seguinte seja mais curto
   const lastDay = new Date(
     next.getFullYear(),
     next.getMonth() + 1,
@@ -64,20 +63,27 @@ export async function PUT(req: NextRequest, { params }: Params) {
   // Atualiza o registro com os dados recebidos
   const updated = await prisma.financeEntry.update({
     where: { id },
+    include: { category: true },
     data: {
-      title: body.title ?? current.title,
-      amount:
-        body.amount !== undefined ? Number(body.amount) : current.amount,
-      dueDate: body.dueDate ? new Date(body.dueDate) : current.dueDate,
-      kind: body.kind ?? current.kind,
+      title:      body.title ?? current.title,
+      amount:     body.amount !== undefined ? Number(body.amount) : current.amount,
+      dueDate:    body.dueDate ? new Date(body.dueDate) : current.dueDate,
+      kind:       body.kind ?? current.kind,
       categoryId: body.categoryId ?? current.categoryId,
-      partner: body.partner ?? current.partner,
-      notes: body.notes ?? current.notes,
+      partner:    body.partner ?? current.partner,
+      notes:      body.notes ?? current.notes,
       recurring:
         typeof body.recurring === "boolean"
           ? body.recurring
           : current.recurring,
-      paid: typeof body.paid === "boolean" ? body.paid : current.paid,
+      confirmed:                              // ← novo campo
+        typeof body.confirmed === "boolean"
+          ? body.confirmed
+          : current.confirmed,
+      paid:
+        typeof body.paid === "boolean"
+          ? body.paid
+          : current.paid,
       paidAt:
         body.paidAt !== undefined
           ? body.paidAt
@@ -92,7 +98,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   // Se for recorrente e acabou de ser marcado como pago, cria o próximo lançamento
   if (current.recurring && becamePaid) {
-    // Verifica se já existe um lançamento gerado a partir deste (evita duplicação)
     const alreadyGenerated = await prisma.financeEntry.findFirst({
       where: { generatedFromId: current.id },
     });
@@ -100,17 +105,18 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (!alreadyGenerated) {
       await prisma.financeEntry.create({
         data: {
-          title: current.title,
-          amount: current.amount,
-          dueDate: addOneMonth(new Date(current.dueDate)),
-          kind: current.kind,
-          categoryId: current.categoryId,
-          partner: current.partner,
-          notes: current.notes,
-          recurring: true,
-          paid: false,
-          paidAt: null,
-          generatedFromId: current.id, // referência ao lançamento que gerou este
+          title:           current.title,
+          amount:          current.amount,
+          dueDate:         addOneMonth(new Date(current.dueDate)),
+          kind:            current.kind,
+          categoryId:      current.categoryId,
+          partner:         current.partner,
+          notes:           current.notes,
+          recurring:       true,
+          confirmed:       false, // ← próximo mês começa como não confirmado
+          paid:            false,
+          paidAt:          null,
+          generatedFromId: current.id,
         },
       });
     }

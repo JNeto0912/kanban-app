@@ -15,6 +15,7 @@ type Entry = {
   partner: string;
   notes: string;
   recurring: boolean;
+  confirmed: boolean; // ← novo
   paid: boolean;
   paidAt: string | null;
 };
@@ -91,29 +92,28 @@ const MONTHS = [
 // ---------- componente ----------
 export default function Finance() {
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [cats, setCats] = useState<Category[]>([]);
+  const [cats, setCats]       = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragId, setDragId]   = useState<string | null>(null);
 
-  // filtro mês/ano
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+  const [selectedYear, setSelectedYear]   = useState(today.getFullYear());
 
-  // aba de categoria ativa
   const [activeCategory, setActiveCategory] =
     useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
 
   const [form, setForm] = useState({
-    title: "",
-    amount: "",
-    dueDate: "",
-    kind: "A pagar" as Entry["kind"],
+    title:      "",
+    amount:     "",
+    dueDate:    "",
+    kind:       "A pagar" as Entry["kind"],
     categoryId: "",
-    partner: "",
-    notes: "",
-    recurring: false,
+    partner:    "",
+    notes:      "",
+    recurring:  false,
+    confirmed:  false, // ← novo
   });
 
   // ---------- load ----------
@@ -148,53 +148,30 @@ export default function Finance() {
     }
   }
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   // ---------- filtros ----------
-  // 1. filtra pelo mês/ano selecionado
   const monthFiltered = useMemo(() => {
     return entries.filter((e) => {
       const d = new Date(e.dueDate);
-      return (
-        d.getMonth() + 1 === selectedMonth &&
-        d.getFullYear() === selectedYear
-      );
+      return d.getMonth() + 1 === selectedMonth && d.getFullYear() === selectedYear;
     });
   }, [entries, selectedMonth, selectedYear]);
 
-  // 2. filtra pela categoria ativa
   const filteredEntries = useMemo(() => {
     return monthFiltered.filter((e) => e.category?.name === activeCategory);
   }, [monthFiltered, activeCategory]);
 
-  // ---------- resumo por categoria (cards do topo) ----------
+  // ---------- resumo por categoria ----------
   const summaryByCategory = useMemo(() => {
     return ALLOWED_CATEGORIES.map((cat) => {
       const items = monthFiltered.filter((e) => e.category?.name === cat);
-      const toPayOpen = items
-        .filter((e) => e.kind === "A pagar" && !e.paid)
-        .reduce((s, e) => s + e.amount, 0);
-      const toPayPaid = items
-        .filter((e) => e.kind === "A pagar" && e.paid)
-        .reduce((s, e) => s + e.amount, 0);
-      const toReceivePending = items
-        .filter((e) => e.kind === "A receber" && !e.paid)
-        .reduce((s, e) => s + e.amount, 0);
-      const toReceiveReceived = items
-        .filter((e) => e.kind === "A receber" && e.paid)
-        .reduce((s, e) => s + e.amount, 0);
-      const balance =
-        toReceiveReceived + toReceivePending - toPayPaid - toPayOpen;
-      return {
-        cat,
-        toPayOpen,
-        toPayPaid,
-        toReceivePending,
-        toReceiveReceived,
-        balance,
-      };
+      const toPayOpen        = items.filter((e) => e.kind === "A pagar"  && !e.paid).reduce((s, e) => s + e.amount, 0);
+      const toPayPaid        = items.filter((e) => e.kind === "A pagar"  &&  e.paid).reduce((s, e) => s + e.amount, 0);
+      const toReceivePending = items.filter((e) => e.kind === "A receber" && !e.paid).reduce((s, e) => s + e.amount, 0);
+      const toReceiveReceived= items.filter((e) => e.kind === "A receber" &&  e.paid).reduce((s, e) => s + e.amount, 0);
+      const balance = toReceiveReceived + toReceivePending - toPayPaid - toPayOpen;
+      return { cat, toPayOpen, toPayPaid, toReceivePending, toReceiveReceived, balance };
     });
   }, [monthFiltered]);
 
@@ -202,8 +179,8 @@ export default function Finance() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim()) { alert("Informe um título."); return; }
-    if (!form.amount)       { alert("Informe um valor."); return; }
-    if (!form.dueDate)      { alert("Informe uma data."); return; }
+    if (!form.amount)       { alert("Informe um valor.");  return; }
+    if (!form.dueDate)      { alert("Informe uma data.");  return; }
     if (!form.categoryId)   { alert("Selecione uma categoria."); return; }
 
     const payload = {
@@ -215,6 +192,7 @@ export default function Finance() {
       partner:    form.partner,
       notes:      form.notes,
       recurring:  form.recurring,
+      confirmed:  form.confirmed, // ← novo
     };
 
     try {
@@ -245,7 +223,7 @@ export default function Finance() {
       setForm({
         title: "", amount: "", dueDate: "", kind: "A pagar",
         categoryId: firstCat?.id || cats[0]?.id || "",
-        partner: "", notes: "", recurring: false,
+        partner: "", notes: "", recurring: false, confirmed: false, // ← novo
       });
       setEditingId(null);
     } catch (error) {
@@ -279,6 +257,7 @@ export default function Finance() {
       partner:    entry.partner,
       notes:      entry.notes,
       recurring:  entry.recurring,
+      confirmed:  entry.confirmed, // ← novo
     });
   }
 
@@ -290,11 +269,11 @@ export default function Finance() {
     setForm({
       title: "", amount: "", dueDate: "", kind: "A pagar",
       categoryId: firstCat?.id || cats[0]?.id || "",
-      partner: "", notes: "", recurring: false,
+      partner: "", notes: "", recurring: false, confirmed: false, // ← novo
     });
   }
 
-  // ---------- kanban drag & drop ----------
+  // ---------- drag & drop ----------
   function handleDragStart(e: React.DragEvent, id: string) {
     setDragId(id);
     e.dataTransfer.effectAllowed = "move";
@@ -310,15 +289,12 @@ export default function Finance() {
     if (!dragId) return;
     const entry = filteredEntries.find((en) => en.id === dragId);
     if (!entry) { setDragId(null); return; }
-    if (entry.kind === col.kind && entry.paid === col.paid) {
-      setDragId(null);
-      return;
-    }
+    if (entry.kind === col.kind && entry.paid === col.paid) { setDragId(null); return; }
 
     const payload = {
       ...entry,
-      kind: col.kind,
-      paid: col.paid,
+      kind:  col.kind,
+      paid:  col.paid,
       paidAt: col.paid ? new Date().toISOString() : null,
     };
 
@@ -330,9 +306,7 @@ export default function Finance() {
       });
       if (!res.ok) throw new Error("Erro ao mover card");
       const updated = await res.json();
-      setEntries((prev) =>
-        prev.map((en) => (en.id === dragId ? updated : en)),
-      );
+      setEntries((prev) => prev.map((en) => (en.id === dragId ? updated : en)));
     } catch (error) {
       console.error(error);
       alert(`Erro ao mover card: ${error instanceof Error ? error.message : String(error)}`);
@@ -348,7 +322,6 @@ export default function Finance() {
       {/* ── Cabeçalho + filtro mês/ano ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-slate-900">Financeiro</h2>
-
         <div className="flex gap-2">
           <select
             value={selectedMonth}
@@ -359,7 +332,6 @@ export default function Finance() {
               <option key={m} value={i + 1}>{m}</option>
             ))}
           </select>
-
           <select
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -379,40 +351,14 @@ export default function Finance() {
             key={item.cat}
             className="rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-xs text-slate-100 space-y-1"
           >
-            <p className="text-[11px] font-semibold text-slate-300 mb-2">
-              {item.cat}
-            </p>
-            <p>
-              A pagar (aberto):{" "}
-              <span className="font-semibold text-amber-300">
-                {formatCurrency(item.toPayOpen)}
-              </span>
-            </p>
-            <p>
-              A pagar (pago):{" "}
-              <span className="font-semibold text-emerald-300">
-                {formatCurrency(item.toPayPaid)}
-              </span>
-            </p>
-            <p>
-              A receber (pendente):{" "}
-              <span className="font-semibold text-amber-300">
-                {formatCurrency(item.toReceivePending)}
-              </span>
-            </p>
-            <p>
-              A receber (recebido):{" "}
-              <span className="font-semibold text-emerald-300">
-                {formatCurrency(item.toReceiveReceived)}
-              </span>
-            </p>
+            <p className="text-[11px] font-semibold text-slate-300 mb-2">{item.cat}</p>
+            <p>A pagar (aberto): <span className="font-semibold text-amber-300">{formatCurrency(item.toPayOpen)}</span></p>
+            <p>A pagar (pago): <span className="font-semibold text-emerald-300">{formatCurrency(item.toPayPaid)}</span></p>
+            <p>A receber (pendente): <span className="font-semibold text-amber-300">{formatCurrency(item.toReceivePending)}</span></p>
+            <p>A receber (recebido): <span className="font-semibold text-emerald-300">{formatCurrency(item.toReceiveReceived)}</span></p>
             <div className="pt-1 mt-1 border-t border-slate-700 flex justify-between">
               <span className="text-slate-400">Saldo:</span>
-              <span
-                className={`font-semibold ${
-                  item.balance >= 0 ? "text-emerald-300" : "text-red-400"
-                }`}
-              >
+              <span className={`font-semibold ${item.balance >= 0 ? "text-emerald-300" : "text-red-400"}`}>
                 {formatCurrency(item.balance)}
               </span>
             </div>
@@ -462,9 +408,7 @@ export default function Finance() {
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.kind}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, kind: e.target.value as Entry["kind"] }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as Entry["kind"] }))}
           >
             <option value="A pagar">A pagar</option>
             <option value="A receber">A receber</option>
@@ -476,15 +420,11 @@ export default function Finance() {
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.categoryId}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, categoryId: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
           >
             {cats
               .filter((c) =>
-                ALLOWED_CATEGORIES.includes(
-                  c.name as (typeof ALLOWED_CATEGORIES)[number],
-                ),
+                ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
               )
               .map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -497,9 +437,7 @@ export default function Finance() {
           <input
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.partner}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, partner: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, partner: e.target.value }))}
             placeholder="Quem paga / recebe"
           />
         </div>
@@ -513,18 +451,32 @@ export default function Finance() {
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            id="recorrente"
-            type="checkbox"
-            checked={form.recurring}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, recurring: e.target.checked }))
-            }
-          />
-          <label htmlFor="recorrente" className="text-xs text-slate-600">
-            Recorrente (gera próximo mês automaticamente)
-          </label>
+        {/* checkboxes */}
+        <div className="flex flex-col gap-2 lg:col-span-1">
+          <div className="flex items-center gap-2">
+            <input
+              id="recorrente"
+              type="checkbox"
+              checked={form.recurring}
+              onChange={(e) => setForm((f) => ({ ...f, recurring: e.target.checked }))}
+            />
+            <label htmlFor="recorrente" className="text-xs text-slate-600">
+              Recorrente (gera próximo mês automaticamente)
+            </label>
+          </div>
+
+          {/* ← novo checkbox */}
+          <div className="flex items-center gap-2">
+            <input
+              id="confirmed"
+              type="checkbox"
+              checked={form.confirmed}
+              onChange={(e) => setForm((f) => ({ ...f, confirmed: e.target.checked }))}
+            />
+            <label htmlFor="confirmed" className="text-xs text-slate-600">
+              Valor confirmado (tenho certeza do valor)
+            </label>
+          </div>
         </div>
 
         <div className="flex items-end gap-3 md:col-span-2 lg:col-span-2">
@@ -585,16 +537,10 @@ export default function Finance() {
               >
                 {/* cabeçalho da coluna */}
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-slate-800">
-                    {col.label}
-                  </span>
-                  <span className="text-[10px] text-slate-400">
-                    {colEntries.length}
-                  </span>
+                  <span className="text-xs font-semibold text-slate-800">{col.label}</span>
+                  <span className="text-[10px] text-slate-400">{colEntries.length}</span>
                 </div>
-                <p className="text-[10px] text-slate-400 mb-3">
-                  {formatCurrency(total)}
-                </p>
+                <p className="text-[10px] text-slate-400 mb-3">{formatCurrency(total)}</p>
 
                 {/* cards */}
                 <div className="space-y-2 flex-1">
@@ -605,18 +551,28 @@ export default function Finance() {
                       onDragStart={(ev) => handleDragStart(ev, e.id)}
                       className="rounded-md bg-white border border-slate-200 px-2 py-2 shadow-sm cursor-grab active:cursor-grabbing space-y-1"
                     >
-                      {/* título + selo recorrente */}
-                      <div className="flex items-start justify-between gap-1">
+                      {/* título + selos */}
+                      <div className="flex items-start justify-between gap-1 flex-wrap">
                         <h4 className="text-xs font-medium text-slate-900 leading-snug">
                           {e.title}
                         </h4>
-                        {e.recurring && (
-                          <span
-                            className={`shrink-0 text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${col.badgeClass}`}
-                          >
-                            Recorrente
-                          </span>
-                        )}
+                        <div className="flex gap-1 flex-wrap justify-end">
+                          {/* ← selo confirmado / estimado */}
+                          {e.confirmed ? (
+                            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                              ✓ Confirmado
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-slate-100 text-slate-500 border-slate-200">
+                              Estimado
+                            </span>
+                          )}
+                          {e.recurring && (
+                            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${col.badgeClass}`}>
+                              Recorrente
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* data */}
@@ -626,21 +582,20 @@ export default function Finance() {
 
                       {/* parceiro */}
                       {e.partner && (
-                        <p className="text-[10px] text-slate-500 truncate">
-                          {e.partner}
-                        </p>
+                        <p className="text-[10px] text-slate-500 truncate">{e.partner}</p>
                       )}
 
                       {/* observações */}
                       {e.notes && (
-                        <p className="text-[10px] text-slate-500 line-clamp-2">
-                          {e.notes}
-                        </p>
+                        <p className="text-[10px] text-slate-500 line-clamp-2">{e.notes}</p>
                       )}
 
-                      {/* valor */}
-                      <p className="text-xs font-semibold text-slate-800">
+                      {/* valor — cor muda se confirmado */}
+                      <p className={`text-xs font-semibold ${e.confirmed ? "text-slate-900" : "text-slate-400"}`}>
                         {formatCurrency(e.amount)}
+                        {!e.confirmed && (
+                          <span className="ml-1 text-[9px] font-normal">(estimado)</span>
+                        )}
                       </p>
 
                       {/* ações */}
