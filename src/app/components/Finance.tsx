@@ -424,7 +424,7 @@ const mainData: ChartPoint[] = [
             </div>
 
             <div className="space-y-2 max-h-[52vh] overflow-auto pr-1">
-              {subtypeDetail.items
+              {[...subtypeDetail.items]
                 .sort(
                   (a, b) =>
                     new Date(a.dueDate).getTime() -
