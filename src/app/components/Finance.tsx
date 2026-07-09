@@ -2,6 +2,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 // ---------- tipos ----------
 type Entry = {
@@ -15,7 +24,7 @@ type Entry = {
   partner: string;
   notes: string;
   recurring: boolean;
-  confirmed: boolean; // ← novo
+  confirmed: boolean;
   paid: boolean;
   paidAt: string | null;
 };
@@ -26,6 +35,15 @@ type Category = {
   kind: string;
   partner: boolean;
   custom: boolean;
+};
+
+type SummaryItem = {
+  cat: string;
+  toPayOpen: number;
+  toPayPaid: number;
+  toReceivePending: number;
+  toReceiveReceived: number;
+  balance: number;
 };
 
 const ALLOWED_CATEGORIES = ["Trabalho", "Igreja", "Particular"] as const;
@@ -89,13 +107,123 @@ const MONTHS = [
   "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-// ---------- componente ----------
+// ---------- modal do gráfico ----------
+function ChartModal({
+  item,
+  onClose,
+}: {
+  item: SummaryItem;
+  onClose: () => void;
+}) {
+  const data = [
+    { name: "A pagar (aberto)",     value: item.toPayOpen,         fill: "#f59e0b" },
+    { name: "A pagar (pago)",       value: item.toPayPaid,         fill: "#10b981" },
+    { name: "Entradas confirmadas", value: item.toReceiveReceived, fill: "#6366f1" },
+  ].filter((d) => d.value > 0);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* cabeçalho */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">{item.cat}</h3>
+            <p className="text-[11px] text-slate-400">Distribuição financeira do mês</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-700 text-xl leading-none"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* gráfico de colunas */}
+        {data.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-10">
+            Sem lançamentos neste mês.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart
+              data={data}
+              margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+            >
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 10, fill: "#64748b" }}
+                angle={-15}
+                textAnchor="end"
+                interval={0}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: "#64748b" }}
+                tickFormatter={(v) =>
+                  new Intl.NumberFormat("pt-BR", {
+                    notation: "compact",
+                    currency: "BRL",
+                    style: "currency",
+                  }).format(v)
+                }
+              />
+              <Tooltip
+                formatter={(value) => formatCurrency(Number(value ?? 0))}
+              />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                {data.map((entry, index) => (
+                  <Cell key={index} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+
+        {/* totais */}
+        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+            <p className="text-amber-600 font-medium">A pagar (aberto)</p>
+            <p className="text-slate-800 font-semibold">{formatCurrency(item.toPayOpen)}</p>
+          </div>
+          <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+            <p className="text-emerald-600 font-medium">A pagar (pago)</p>
+            <p className="text-slate-800 font-semibold">{formatCurrency(item.toPayPaid)}</p>
+          </div>
+          <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 col-span-2">
+            <p className="text-indigo-600 font-medium">Entradas confirmadas</p>
+            <p className="text-slate-800 font-semibold">{formatCurrency(item.toReceiveReceived)}</p>
+          </div>
+        </div>
+
+        {/* saldo */}
+        <div
+          className={`mt-3 rounded-lg px-4 py-2 flex justify-between items-center text-sm font-semibold ${
+            item.balance >= 0
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-red-50 text-red-600"
+          }`}
+        >
+          <span>Saldo do mês</span>
+          <span>{formatCurrency(item.balance)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- componente principal ----------
 export default function Finance() {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [cats, setCats]       = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entries, setEntries]     = useState<Entry[]>([]);
+  const [cats, setCats]           = useState<Category[]>([]);
+  const [loading, setLoading]     = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [dragId, setDragId]   = useState<string | null>(null);
+  const [dragId, setDragId]       = useState<string | null>(null);
+  const [chartItem, setChartItem] = useState<SummaryItem | null>(null);
 
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
@@ -113,7 +241,7 @@ export default function Finance() {
     partner:    "",
     notes:      "",
     recurring:  false,
-    confirmed:  false, // ← novo
+    confirmed:  false,
   });
 
   // ---------- load ----------
@@ -163,14 +291,14 @@ export default function Finance() {
   }, [monthFiltered, activeCategory]);
 
   // ---------- resumo por categoria ----------
-  const summaryByCategory = useMemo(() => {
+  const summaryByCategory = useMemo<SummaryItem[]>(() => {
     return ALLOWED_CATEGORIES.map((cat) => {
-      const items = monthFiltered.filter((e) => e.category?.name === cat);
-      const toPayOpen        = items.filter((e) => e.kind === "A pagar"  && !e.paid).reduce((s, e) => s + e.amount, 0);
-      const toPayPaid        = items.filter((e) => e.kind === "A pagar"  &&  e.paid).reduce((s, e) => s + e.amount, 0);
-      const toReceivePending = items.filter((e) => e.kind === "A receber" && !e.paid).reduce((s, e) => s + e.amount, 0);
-      const toReceiveReceived= items.filter((e) => e.kind === "A receber" &&  e.paid).reduce((s, e) => s + e.amount, 0);
-      const balance = toReceiveReceived + toReceivePending - toPayPaid - toPayOpen;
+      const items             = monthFiltered.filter((e) => e.category?.name === cat);
+      const toPayOpen         = items.filter((e) => e.kind === "A pagar"  && !e.paid).reduce((s, e) => s + e.amount, 0);
+      const toPayPaid         = items.filter((e) => e.kind === "A pagar"  &&  e.paid).reduce((s, e) => s + e.amount, 0);
+      const toReceivePending  = items.filter((e) => e.kind === "A receber" && !e.paid).reduce((s, e) => s + e.amount, 0);
+      const toReceiveReceived = items.filter((e) => e.kind === "A receber" &&  e.paid).reduce((s, e) => s + e.amount, 0);
+      const balance           = toReceiveReceived + toReceivePending - toPayPaid - toPayOpen;
       return { cat, toPayOpen, toPayPaid, toReceivePending, toReceiveReceived, balance };
     });
   }, [monthFiltered]);
@@ -192,7 +320,7 @@ export default function Finance() {
       partner:    form.partner,
       notes:      form.notes,
       recurring:  form.recurring,
-      confirmed:  form.confirmed, // ← novo
+      confirmed:  form.confirmed,
     };
 
     try {
@@ -223,7 +351,7 @@ export default function Finance() {
       setForm({
         title: "", amount: "", dueDate: "", kind: "A pagar",
         categoryId: firstCat?.id || cats[0]?.id || "",
-        partner: "", notes: "", recurring: false, confirmed: false, // ← novo
+        partner: "", notes: "", recurring: false, confirmed: false,
       });
       setEditingId(null);
     } catch (error) {
@@ -257,7 +385,7 @@ export default function Finance() {
       partner:    entry.partner,
       notes:      entry.notes,
       recurring:  entry.recurring,
-      confirmed:  entry.confirmed, // ← novo
+      confirmed:  entry.confirmed,
     });
   }
 
@@ -269,7 +397,7 @@ export default function Finance() {
     setForm({
       title: "", amount: "", dueDate: "", kind: "A pagar",
       categoryId: firstCat?.id || cats[0]?.id || "",
-      partner: "", notes: "", recurring: false, confirmed: false, // ← novo
+      partner: "", notes: "", recurring: false, confirmed: false,
     });
   }
 
@@ -293,8 +421,8 @@ export default function Finance() {
 
     const payload = {
       ...entry,
-      kind:  col.kind,
-      paid:  col.paid,
+      kind:   col.kind,
+      paid:   col.paid,
       paidAt: col.paid ? new Date().toISOString() : null,
     };
 
@@ -318,6 +446,11 @@ export default function Finance() {
   // ---------- render ----------
   return (
     <div className="space-y-6">
+
+      {/* modal do gráfico */}
+      {chartItem && (
+        <ChartModal item={chartItem} onClose={() => setChartItem(null)} />
+      )}
 
       {/* ── Cabeçalho + filtro mês/ano ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -344,14 +477,21 @@ export default function Finance() {
         </div>
       </div>
 
-      {/* ── Resumo por categoria ── */}
+      {/* ── Resumo por categoria (clicável → abre gráfico) ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {summaryByCategory.map((item) => (
-          <div
+          <button
             key={item.cat}
-            className="rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-xs text-slate-100 space-y-1"
+            type="button"
+            onClick={() => setChartItem(item)}
+            className="text-left rounded-lg bg-slate-900 border border-slate-700 px-4 py-3 text-xs text-slate-100 space-y-1 hover:bg-slate-800 transition-colors group cursor-pointer"
           >
-            <p className="text-[11px] font-semibold text-slate-300 mb-2">{item.cat}</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-semibold text-slate-300">{item.cat}</p>
+              <span className="text-[10px] text-slate-500 group-hover:text-slate-300 transition-colors">
+                Ver gráfico →
+              </span>
+            </div>
             <p>A pagar (aberto): <span className="font-semibold text-amber-300">{formatCurrency(item.toPayOpen)}</span></p>
             <p>A pagar (pago): <span className="font-semibold text-emerald-300">{formatCurrency(item.toPayPaid)}</span></p>
             <p>A receber (pendente): <span className="font-semibold text-amber-300">{formatCurrency(item.toReceivePending)}</span></p>
@@ -362,7 +502,7 @@ export default function Finance() {
                 {formatCurrency(item.balance)}
               </span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -451,7 +591,6 @@ export default function Finance() {
           />
         </div>
 
-        {/* checkboxes */}
         <div className="flex flex-col gap-2 lg:col-span-1">
           <div className="flex items-center gap-2">
             <input
@@ -464,8 +603,6 @@ export default function Finance() {
               Recorrente (gera próximo mês automaticamente)
             </label>
           </div>
-
-          {/* ← novo checkbox */}
           <div className="flex items-center gap-2">
             <input
               id="confirmed"
@@ -535,14 +672,12 @@ export default function Finance() {
                 onDrop={(e) => handleDrop(e, col)}
                 className={`rounded-lg bg-slate-50 border border-slate-200 border-t-4 ${col.borderColor} p-3 min-h-[180px] flex flex-col`}
               >
-                {/* cabeçalho da coluna */}
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold text-slate-800">{col.label}</span>
                   <span className="text-[10px] text-slate-400">{colEntries.length}</span>
                 </div>
                 <p className="text-[10px] text-slate-400 mb-3">{formatCurrency(total)}</p>
 
-                {/* cards */}
                 <div className="space-y-2 flex-1">
                   {colEntries.map((e) => (
                     <article
@@ -551,13 +686,11 @@ export default function Finance() {
                       onDragStart={(ev) => handleDragStart(ev, e.id)}
                       className="rounded-md bg-white border border-slate-200 px-2 py-2 shadow-sm cursor-grab active:cursor-grabbing space-y-1"
                     >
-                      {/* título + selos */}
                       <div className="flex items-start justify-between gap-1 flex-wrap">
                         <h4 className="text-xs font-medium text-slate-900 leading-snug">
                           {e.title}
                         </h4>
                         <div className="flex gap-1 flex-wrap justify-end">
-                          {/* ← selo confirmado / estimado */}
                           {e.confirmed ? (
                             <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
                               ✓ Confirmado
@@ -575,22 +708,18 @@ export default function Finance() {
                         </div>
                       </div>
 
-                      {/* data */}
                       <p className="text-[10px] text-slate-400">
                         {new Date(e.dueDate).toLocaleDateString("pt-BR")}
                       </p>
 
-                      {/* parceiro */}
                       {e.partner && (
                         <p className="text-[10px] text-slate-500 truncate">{e.partner}</p>
                       )}
 
-                      {/* observações */}
                       {e.notes && (
                         <p className="text-[10px] text-slate-500 line-clamp-2">{e.notes}</p>
                       )}
 
-                      {/* valor — cor muda se confirmado */}
                       <p className={`text-xs font-semibold ${e.confirmed ? "text-slate-900" : "text-slate-400"}`}>
                         {formatCurrency(e.amount)}
                         {!e.confirmed && (
@@ -598,7 +727,6 @@ export default function Finance() {
                         )}
                       </p>
 
-                      {/* ações */}
                       <footer className="flex gap-2 pt-1 border-t border-slate-100">
                         <button
                           onClick={() => startEdit(e)}
