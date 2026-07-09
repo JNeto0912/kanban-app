@@ -165,30 +165,30 @@ function ChartModal({
   const [drilldown, setDrilldown]         = useState<DrilldownState | null>(null);
   const [subtypeDetail, setSubtypeDetail] = useState<SubtypeDetail>(null);
 
-  const mainData: ChartPoint[] = [
-    {
-      name:      "A pagar (aberto)",
-      value:     item.toPayOpen,
-      fill:      MAIN_COLORS[0],
-      drillable: false,
-    },
-    {
-      name:      "A pagar (pago)",
-      value:     item.toPayPaid,
-      fill:      MAIN_COLORS[1],
-      drillable: item.cat === CHURCH_CATEGORY,
-      drillKind: "A pagar",
-      drillPaid: true,
-    },
-    {
-      name:      "Entradas confirmadas",
-      value:     item.toReceiveReceived,
-      fill:      MAIN_COLORS[2],
-      drillable: item.cat === CHURCH_CATEGORY,
-      drillKind: "A receber",
-      drillPaid: true,
-    },
-  ].filter((d) => d.value > 0);
+const mainData: ChartPoint[] = [
+  {
+    name:      "A pagar (aberto)",
+    value:     item.toPayOpen,
+    fill:      MAIN_COLORS[0],
+    drillable: false,
+  },
+  {
+    name:                        "A pagar (pago)",
+    value:     item.toPayPaid,
+    fill:      MAIN_COLORS[1],
+    drillable: item.cat === CHURCH_CATEGORY,
+    drillKind: "A pagar" as Entry["kind"],
+    drillPaid: true,
+  },
+  {
+    name:      "Entradas confirmadas",
+    value:     item.toReceiveReceived,
+    fill:      MAIN_COLORS[2],
+    drillable: item.cat === CHURCH_CATEGORY,
+    drillKind: "A receber" as Entry["kind"],
+    drillPaid: true,
+  },
+].filter((d) => d.value > 0);
 
   function openDrilldown(point: ChartPoint) {
     if (
