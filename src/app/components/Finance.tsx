@@ -64,12 +64,18 @@ type ChartPoint = {
   drillable?: boolean;
   drillKind?: Entry["kind"];
   drillPaid?: boolean;
+  items?: Entry[];
 };
 
 type DrilldownState = {
   label: string;
   data: ChartPoint[];
 };
+
+type SubtypeDetail = {
+  label: string;
+  items: Entry[];
+} | null;
 
 const ALLOWED_CATEGORIES = ["Igreja", "Particular"] as const;
 const CHURCH_CATEGORY = "Igreja";
@@ -140,16 +146,10 @@ const MONTHS = [
   "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-const MAIN_COLORS = ["#f59e0b", "#10b981", "#6366f1"];
+const MAIN_COLORS    = ["#f59e0b", "#10b981", "#6366f1"];
 const DRILLDOWN_COLORS = [
-  "#6366f1",
-  "#8b5cf6",
-  "#ec4899",
-  "#14b8a6",
-  "#f59e0b",
-  "#22c55e",
-  "#06b6d4",
-  "#ef4444",
+  "#6366f1", "#8b5cf6", "#ec4899", "#14b8a6",
+  "#f59e0b", "#22c55e", "#06b6d4", "#ef4444",
 ];
 
 // ---------- modal do gráfico ----------
@@ -162,27 +162,28 @@ function ChartModal({
   entries: Entry[];
   onClose: () => void;
 }) {
-  const [drilldown, setDrilldown] = useState<DrilldownState | null>(null);
+  const [drilldown, setDrilldown]         = useState<DrilldownState | null>(null);
+  const [subtypeDetail, setSubtypeDetail] = useState<SubtypeDetail>(null);
 
   const mainData: ChartPoint[] = [
     {
-      name: "A pagar (aberto)",
-      value: item.toPayOpen,
-      fill: MAIN_COLORS[0],
+      name:      "A pagar (aberto)",
+      value:     item.toPayOpen,
+      fill:      MAIN_COLORS[0],
       drillable: false,
     },
     {
-      name: "A pagar (pago)",
-      value: item.toPayPaid,
-      fill: MAIN_COLORS[1],
+      name:      "A pagar (pago)",
+      value:     item.toPayPaid,
+      fill:      MAIN_COLORS[1],
       drillable: item.cat === CHURCH_CATEGORY,
       drillKind: "A pagar",
       drillPaid: true,
     },
     {
-      name: "Entradas confirmadas",
-      value: item.toReceiveReceived,
-      fill: MAIN_COLORS[2],
+      name:      "Entradas confirmadas",
+      value:     item.toReceiveReceived,
+      fill:      MAIN_COLORS[2],
       drillable: item.cat === CHURCH_CATEGORY,
       drillKind: "A receber",
       drillPaid: true,
@@ -195,43 +196,60 @@ function ChartModal({
       !point.drillable ||
       !point.drillKind ||
       point.drillPaid === undefined
-    ) {
-      return;
-    }
+    ) return;
 
     const filtered = entries.filter(
       (e) =>
         e.category?.name === item.cat &&
-        e.kind === point.drillKind &&
-        e.paid === point.drillPaid,
+        e.kind            === point.drillKind &&
+        e.paid            === point.drillPaid,
     );
 
-    const grouped = filtered.reduce<Record<string, number>>((acc, entry) => {
+    const grouped = filtered.reduce<
+      Record<string, { value: number; items: Entry[] }>
+    >((acc, entry) => {
       const key = entry.financeType?.name ?? "Sem subtipo";
-      acc[key] = (acc[key] ?? 0) + entry.amount;
+      if (!acc[key]) acc[key] = { value: 0, items: [] };
+      acc[key].value += entry.amount;
+      acc[key].items.push(entry);
       return acc;
     }, {});
 
     const drillData: ChartPoint[] = Object.entries(grouped)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, value], index) => ({
+      .sort((a, b) => b[1].value - a[1].value)
+      .map(([name, group], index) => ({
         name,
-        value,
-        fill: DRILLDOWN_COLORS[index % DRILLDOWN_COLORS.length],
+        value: group.value,
+        fill:  DRILLDOWN_COLORS[index % DRILLDOWN_COLORS.length],
+        items: group.items,
       }));
 
     if (drillData.length === 0) return;
 
-    setDrilldown({
-      label: point.name,
-      data: drillData,
-    });
+    setDrilldown({ label: point.name, data: drillData });
+    setSubtypeDetail(null);
   }
 
-  const currentData = drilldown ? drilldown.data : mainData;
-  const drilldownTotal = drilldown
-    ? drilldown.data.reduce((sum, d) => sum + d.value, 0)
+  function openSubtypeDetail(point: ChartPoint) {
+    if (!point.items?.length) return;
+    setSubtypeDetail({ label: point.name, items: point.items });
+  }
+
+  function handleBack() {
+    if (subtypeDetail) { setSubtypeDetail(null); return; }
+    if (drilldown)     { setDrilldown(null);      return; }
+  }
+
+  const currentData   = drilldown ? drilldown.data : mainData;
+  const subtotal      = subtypeDetail
+    ? subtypeDetail.items.reduce((sum, e) => sum + e.amount, 0)
     : 0;
+
+  const showBack      = !!(drilldown || subtypeDetail);
+  const showTotals    = !drilldown && !subtypeDetail;
+  const showSaldo     = !drilldown && !subtypeDetail;
+  const showDrillList = !!drilldown && !subtypeDetail;
+  const showItems     = !!subtypeDetail;
 
   return (
     <div
@@ -239,42 +257,34 @@ function ChartModal({
       onClick={onClose}
     >
       <div
-        className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl mx-4"
+        className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* cabeçalho */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            {drilldown ? (
-              <>
-                <button
-                  onClick={() => setDrilldown(null)}
-                  className="text-[10px] text-slate-400 hover:text-slate-700 mb-1 flex items-center gap-1"
-                >
-                  ← Voltar
-                </button>
-                <h3 className="text-base font-semibold text-slate-900">
-                  {item.cat} — {drilldown.label}
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  Detalhado por subtipo
-                </p>
-              </>
-            ) : (
-              <>
-                <h3 className="text-base font-semibold text-slate-900">
-                  {item.cat}
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  Distribuição financeira do mês
-                  {item.cat === CHURCH_CATEGORY && (
-                    <span className="ml-1 text-indigo-500">
-                      Clique nas barras de pago ou confirmadas para ver por subtipo
-                    </span>
-                  )}
-                </p>
-              </>
+            {showBack && (
+              <button
+                onClick={handleBack}
+                className="text-[10px] text-slate-400 hover:text-slate-700 mb-1 flex items-center gap-1"
+              >
+                ← Voltar
+              </button>
             )}
+            <h3 className="text-base font-semibold text-slate-900">
+              {item.cat}
+              {drilldown    && ` — ${drilldown.label}`}
+              {subtypeDetail && ` — ${subtypeDetail.label}`}
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              {subtypeDetail
+                ? "Itens que compõem este subtipo"
+                : drilldown
+                  ? "Clique em um subtipo para ver os itens"
+                  : item.cat === CHURCH_CATEGORY
+                    ? "Clique nas barras de pago ou confirmadas para ver por subtipo"
+                    : "Distribuição financeira do mês"}
+            </p>
           </div>
 
           <button
@@ -285,54 +295,61 @@ function ChartModal({
           </button>
         </div>
 
-        {/* gráfico */}
-        {currentData.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-10">
-            Sem lançamentos neste mês.
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart
-              data={currentData}
-              margin={{ top: 10, right: 10, left: 10, bottom: 40 }}
-            >
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 10, fill: "#64748b" }}
-                angle={-15}
-                textAnchor="end"
-                interval={0}
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: "#64748b" }}
-                tickFormatter={formatCompactNumber}
-              />
-              <Tooltip
-                formatter={(value) => formatCurrency(Number(value ?? 0))}
-              />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                {currentData.map((entry, index) => (
-                  <Cell
-                    key={`${entry.name}-${index}`}
-                    fill={entry.fill}
-                    style={{
-                      cursor:
-                        !drilldown && entry.drillable ? "pointer" : "default",
-                    }}
-                    onClick={
-                      !drilldown && entry.drillable
-                        ? () => openDrilldown(entry)
-                        : undefined
-                    }
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        {/* gráfico — oculta quando está no detalhe de itens */}
+        {!showItems && (
+          currentData.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-10">
+              Sem lançamentos neste mês.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart
+                data={currentData}
+                margin={{ top: 10, right: 10, left: 10, bottom: 40 }}
+              >
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  angle={-15}
+                  textAnchor="end"
+                  interval={0}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  tickFormatter={formatCompactNumber}
+                />
+                <Tooltip
+                  formatter={(value) => formatCurrency(Number(value ?? 0))}
+                />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                  {currentData.map((entry, index) => {
+                    const clickable =
+                      (!drilldown && entry.drillable) || !!drilldown;
+
+                    return (
+                      <Cell
+                        key={`${entry.name}-${index}`}
+                        fill={entry.fill}
+                        style={{ cursor: clickable ? "pointer" : "default" }}
+                        onClick={
+                          clickable
+                            ? () =>
+                                drilldown
+                                  ? openSubtypeDetail(entry)
+                                  : openDrilldown(entry)
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )
         )}
 
-        {/* totais */}
-        {!drilldown ? (
+        {/* totais — gráfico principal */}
+        {showTotals && (
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
               <p className="text-amber-600 font-medium">A pagar (aberto)</p>
@@ -355,33 +372,117 @@ function ChartModal({
               </p>
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* lista de subtipos no drilldown */}
+        {showDrillList && (
           <div className="mt-4 space-y-2">
             {drilldown.data.map((d, i) => (
-              <div
+              <button
                 key={`${d.name}-${i}`}
-                className="flex justify-between items-center rounded-lg px-3 py-2 text-xs border"
+                type="button"
+                onClick={() => openSubtypeDetail(d)}
+                className="w-full flex justify-between items-center rounded-lg px-3 py-2 text-xs border text-left hover:opacity-80 transition-opacity"
                 style={{
-                  borderColor: `${d.fill}55`,
+                  borderColor:     `${d.fill}55`,
                   backgroundColor: `${d.fill}12`,
                 }}
               >
                 <span className="font-medium text-slate-700">{d.name}</span>
-                <span className="font-semibold text-slate-900">
-                  {formatCurrency(d.value)}
-                </span>
-              </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-semibold text-slate-900">
+                    {formatCurrency(d.value)}
+                  </span>
+                  <span className="text-slate-400 text-[10px]">
+                    {d.items?.length ?? 0} item(ns) →
+                  </span>
+                </div>
+              </button>
             ))}
 
             <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 flex justify-between items-center text-xs font-semibold">
               <span>Total</span>
-              <span>{formatCurrency(drilldownTotal)}</span>
+              <span>
+                {formatCurrency(
+                  drilldown.data.reduce((s, d) => s + d.value, 0),
+                )}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* detalhe dos itens do subtipo */}
+        {showItems && subtypeDetail && (
+          <div className="mt-2 space-y-2">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-slate-500">
+                {subtypeDetail.items.length} item(ns)
+              </p>
+              <p className="text-xs font-semibold text-slate-800">
+                Total: {formatCurrency(subtotal)}
+              </p>
+            </div>
+
+            <div className="space-y-2 max-h-[52vh] overflow-auto pr-1">
+              {subtypeDetail.items
+                .sort(
+                  (a, b) =>
+                    new Date(a.dueDate).getTime() -
+                    new Date(b.dueDate).getTime(),
+                )
+                .map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900">
+                          {entry.title}
+                        </p>
+
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {new Date(entry.dueDate).toLocaleDateString("pt-BR")}
+                          {entry.partner ? ` • ${entry.partner}` : ""}
+                        </p>
+
+                        {entry.notes && (
+                          <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                            {entry.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0 space-y-1">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {formatCurrency(entry.amount)}
+                        </p>
+
+                        <span
+                          className={`inline-block text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${
+                            entry.confirmed
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-slate-100 text-slate-500 border-slate-200"
+                          }`}
+                        >
+                          {entry.confirmed ? "✓ Confirmado" : "Estimado"}
+                        </span>
+
+                        {entry.recurring && (
+                          <span className="inline-block ml-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
+                            Recorrente
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
         )}
 
         {/* saldo */}
-        {!drilldown && (
+        {showSaldo && (
           <div
             className={`mt-3 rounded-lg px-4 py-2 flex justify-between items-center text-sm font-semibold ${
               item.balance >= 0
@@ -410,25 +511,18 @@ function NewTypeModal({
   onClose: () => void;
   onCreated: (type: FinanceType) => void;
 }) {
-  const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [name, setSaving_name]  = useState("");
+  const [saving, setSaving]     = useState(false);
 
   async function handleSave() {
-    if (!name.trim()) {
-      alert("Informe um nome.");
-      return;
-    }
+    if (!name.trim()) { alert("Informe um nome."); return; }
 
     try {
       setSaving(true);
       const res = await fetch("/api/finance-types", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          kind,
-          categoryId,
-        }),
+        body:    JSON.stringify({ name: name.trim(), kind, categoryId }),
       });
 
       if (!res.ok) {
@@ -472,10 +566,8 @@ function NewTypeModal({
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white mb-4"
           placeholder="Ex: Administrativo, Dízimos..."
           value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void handleSave();
-          }}
+          onChange={(e) => setSaving_name(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void handleSave(); }}
         />
 
         <div className="flex gap-2 justify-end">
@@ -500,33 +592,33 @@ function NewTypeModal({
 
 // ---------- componente principal ----------
 export default function Finance() {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [cats, setCats] = useState<Category[]>([]);
+  const [entries, setEntries]           = useState<Entry[]>([]);
+  const [cats, setCats]                 = useState<Category[]>([]);
   const [financeTypes, setFinanceTypes] = useState<FinanceType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [chartItem, setChartItem] = useState<SummaryItem | null>(null);
-  const [showNewType, setShowNewType] = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [editingId, setEditingId]       = useState<string | null>(null);
+  const [dragId, setDragId]             = useState<string | null>(null);
+  const [chartItem, setChartItem]       = useState<SummaryItem | null>(null);
+  const [showNewType, setShowNewType]   = useState(false);
 
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+  const [selectedYear, setSelectedYear]   = useState(today.getFullYear());
 
   const [activeCategory, setActiveCategory] =
     useState<(typeof ALLOWED_CATEGORIES)[number]>("Igreja");
 
   const [form, setForm] = useState({
-    title: "",
-    amount: "",
-    dueDate: "",
-    kind: "A pagar" as Entry["kind"],
-    categoryId: "",
+    title:         "",
+    amount:        "",
+    dueDate:       "",
+    kind:          "A pagar" as Entry["kind"],
+    categoryId:    "",
     financeTypeId: "",
-    partner: "",
-    notes: "",
-    recurring: false,
-    confirmed: false,
+    partner:       "",
+    notes:         "",
+    recurring:     false,
+    confirmed:     false,
   });
 
   const selectedCategory = useMemo(
@@ -546,7 +638,7 @@ export default function Finance() {
     return financeTypes.filter(
       (t) =>
         t.categoryId === selectedCategory.id &&
-        t.kind === form.kind &&
+        t.kind       === form.kind &&
         t.active,
     );
   }, [financeTypes, isChurchForm, selectedCategory, form.kind]);
@@ -561,9 +653,7 @@ export default function Finance() {
         fetch("/api/finance-cats"),
       ]);
 
-      if (!entRes.ok || !catRes.ok) {
-        throw new Error("Erro ao carregar dados");
-      }
+      if (!entRes.ok || !catRes.ok) throw new Error("Erro ao carregar dados");
 
       const [entData, catData] = await Promise.all([
         entRes.json(),
@@ -574,9 +664,7 @@ export default function Finance() {
       setCats(catData);
 
       const firstCat = catData.find((c: Category) =>
-        ALLOWED_CATEGORIES.includes(
-          c.name as (typeof ALLOWED_CATEGORIES)[number],
-        ),
+        ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
       );
 
       setForm((prev) => ({
@@ -585,20 +673,18 @@ export default function Finance() {
       }));
 
       if (firstCat) {
-        setActiveCategory(
-          firstCat.name as (typeof ALLOWED_CATEGORIES)[number],
-        );
+        setActiveCategory(firstCat.name as (typeof ALLOWED_CATEGORIES)[number]);
       }
 
-      const churchCategory = catData.find((c: Category) => c.name === CHURCH_CATEGORY);
+      const churchCategory = catData.find(
+        (c: Category) => c.name === CHURCH_CATEGORY,
+      );
+
       if (churchCategory) {
         const typesRes = await fetch(
           `/api/finance-types?categoryId=${churchCategory.id}`,
         );
-
-        if (typesRes.ok) {
-          setFinanceTypes(await typesRes.json());
-        }
+        if (typesRes.ok) setFinanceTypes(await typesRes.json());
       }
     } catch (error) {
       console.error(error);
@@ -612,18 +698,14 @@ export default function Finance() {
     }
   }
 
-  useEffect(() => {
-    void loadData();
-  }, []);
+  useEffect(() => { void loadData(); }, []);
 
   useEffect(() => {
     setForm((f) => {
       const cat = cats.find((c) => c.id === f.categoryId);
-
-      if (cat?.name !== CHURCH_CATEGORY) {
-        return f.financeTypeId ? { ...f, financeTypeId: "" } : f;
+      if (cat?.name !== CHURCH_CATEGORY && f.financeTypeId) {
+        return { ...f, financeTypeId: "" };
       }
-
       return f;
     });
   }, [form.categoryId, form.kind, cats]);
@@ -634,47 +716,28 @@ export default function Finance() {
       const d = new Date(e.dueDate);
       return (
         d.getMonth() + 1 === selectedMonth &&
-        d.getFullYear() === selectedYear
+        d.getFullYear()  === selectedYear
       );
     });
   }, [entries, selectedMonth, selectedYear]);
 
-  const filteredEntries = useMemo(() => {
-    return monthFiltered.filter((e) => e.category?.name === activeCategory);
-  }, [monthFiltered, activeCategory]);
+  const filteredEntries = useMemo(
+    () => monthFiltered.filter((e) => e.category?.name === activeCategory),
+    [monthFiltered, activeCategory],
+  );
 
   // ---------- resumo ----------
   const summaryByCategory = useMemo<SummaryItem[]>(() => {
     return ALLOWED_CATEGORIES.map((cat) => {
       const items = monthFiltered.filter((e) => e.category?.name === cat);
 
-      const toPayOpen = items
-        .filter((e) => e.kind === "A pagar" && !e.paid)
-        .reduce((s, e) => s + e.amount, 0);
+      const toPayOpen         = items.filter((e) => e.kind === "A pagar"  && !e.paid).reduce((s, e) => s + e.amount, 0);
+      const toPayPaid         = items.filter((e) => e.kind === "A pagar"  &&  e.paid).reduce((s, e) => s + e.amount, 0);
+      const toReceivePending  = items.filter((e) => e.kind === "A receber" && !e.paid).reduce((s, e) => s + e.amount, 0);
+      const toReceiveReceived = items.filter((e) => e.kind === "A receber" &&  e.paid).reduce((s, e) => s + e.amount, 0);
+      const balance           = toReceiveReceived + toReceivePending - toPayPaid - toPayOpen;
 
-      const toPayPaid = items
-        .filter((e) => e.kind === "A pagar" && e.paid)
-        .reduce((s, e) => s + e.amount, 0);
-
-      const toReceivePending = items
-        .filter((e) => e.kind === "A receber" && !e.paid)
-        .reduce((s, e) => s + e.amount, 0);
-
-      const toReceiveReceived = items
-        .filter((e) => e.kind === "A receber" && e.paid)
-        .reduce((s, e) => s + e.amount, 0);
-
-      const balance =
-        toReceiveReceived + toReceivePending - toPayPaid - toPayOpen;
-
-      return {
-        cat,
-        toPayOpen,
-        toPayPaid,
-        toReceivePending,
-        toReceiveReceived,
-        balance,
-      };
+      return { cat, toPayOpen, toPayPaid, toReceivePending, toReceiveReceived, balance };
     });
   }, [monthFiltered]);
 
@@ -682,42 +745,26 @@ export default function Finance() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!form.title.trim()) {
-      alert("Informe um título.");
-      return;
-    }
-
-    if (!form.amount) {
-      alert("Informe um valor.");
-      return;
-    }
-
-    if (!form.dueDate) {
-      alert("Informe uma data.");
-      return;
-    }
-
-    if (!form.categoryId) {
-      alert("Selecione uma categoria.");
-      return;
-    }
-
+    if (!form.title.trim())  { alert("Informe um título.");      return; }
+    if (!form.amount)        { alert("Informe um valor.");       return; }
+    if (!form.dueDate)       { alert("Informe uma data.");       return; }
+    if (!form.categoryId)    { alert("Selecione uma categoria."); return; }
     if (isChurchForm && !form.financeTypeId) {
       alert("Selecione um subtipo da Igreja.");
       return;
     }
 
     const payload = {
-      title: form.title,
-      amount: Number(form.amount),
-      dueDate: form.dueDate,
-      kind: form.kind,
-      categoryId: form.categoryId,
+      title:         form.title,
+      amount:        Number(form.amount),
+      dueDate:       form.dueDate,
+      kind:          form.kind,
+      categoryId:    form.categoryId,
       financeTypeId: form.financeTypeId || null,
-      partner: form.partner,
-      notes: form.notes,
-      recurring: form.recurring,
-      confirmed: form.confirmed,
+      partner:       form.partner,
+      notes:         form.notes,
+      recurring:     form.recurring,
+      confirmed:     form.confirmed,
     };
 
     try {
@@ -725,15 +772,15 @@ export default function Finance() {
 
       if (editingId) {
         res = await fetch(`/api/finance/${editingId}`, {
-          method: "PUT",
+          method:  "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body:    JSON.stringify(payload),
         });
       } else {
         res = await fetch("/api/finance", {
-          method: "POST",
+          method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body:    JSON.stringify(payload),
         });
       }
 
@@ -748,22 +795,14 @@ export default function Finance() {
       }
 
       const firstCat = cats.find((c) =>
-        ALLOWED_CATEGORIES.includes(
-          c.name as (typeof ALLOWED_CATEGORIES)[number],
-        ),
+        ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
       );
 
       setForm({
-        title: "",
-        amount: "",
-        dueDate: "",
-        kind: "A pagar",
-        categoryId: firstCat?.id || cats[0]?.id || "",
+        title: "", amount: "", dueDate: "", kind: "A pagar",
+        categoryId:    firstCat?.id || cats[0]?.id || "",
         financeTypeId: "",
-        partner: "",
-        notes: "",
-        recurring: false,
-        confirmed: false,
+        partner: "", notes: "", recurring: false, confirmed: false,
       });
 
       setEditingId(null);
@@ -783,9 +822,7 @@ export default function Finance() {
 
     try {
       const res = await fetch(`/api/finance/${id}`, { method: "DELETE" });
-
       if (!res.ok) throw new Error("Erro ao excluir");
-
       setEntries((prev) => prev.filter((e) => e.id !== id));
     } catch (error) {
       console.error(error);
@@ -801,39 +838,29 @@ export default function Finance() {
   function startEdit(entry: Entry) {
     setEditingId(entry.id);
     setForm({
-      title: entry.title,
-      amount: String(entry.amount),
-      dueDate: entry.dueDate.slice(0, 10),
-      kind: entry.kind,
-      categoryId: entry.categoryId,
+      title:         entry.title,
+      amount:        String(entry.amount),
+      dueDate:       entry.dueDate.slice(0, 10),
+      kind:          entry.kind,
+      categoryId:    entry.categoryId,
       financeTypeId: entry.financeTypeId ?? "",
-      partner: entry.partner,
-      notes: entry.notes,
-      recurring: entry.recurring,
-      confirmed: entry.confirmed,
+      partner:       entry.partner,
+      notes:         entry.notes,
+      recurring:     entry.recurring,
+      confirmed:     entry.confirmed,
     });
   }
 
   function cancelEdit() {
     setEditingId(null);
-
     const firstCat = cats.find((c) =>
-      ALLOWED_CATEGORIES.includes(
-        c.name as (typeof ALLOWED_CATEGORIES)[number],
-      ),
+      ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
     );
-
     setForm({
-      title: "",
-      amount: "",
-      dueDate: "",
-      kind: "A pagar",
-      categoryId: firstCat?.id || cats[0]?.id || "",
+      title: "", amount: "", dueDate: "", kind: "A pagar",
+      categoryId:    firstCat?.id || cats[0]?.id || "",
       financeTypeId: "",
-      partner: "",
-      notes: "",
-      recurring: false,
-      confirmed: false,
+      partner: "", notes: "", recurring: false, confirmed: false,
     });
   }
 
@@ -853,10 +880,7 @@ export default function Finance() {
     if (!dragId) return;
 
     const entry = filteredEntries.find((en) => en.id === dragId);
-    if (!entry) {
-      setDragId(null);
-      return;
-    }
+    if (!entry) { setDragId(null); return; }
 
     if (entry.kind === col.kind && entry.paid === col.paid) {
       setDragId(null);
@@ -865,22 +889,24 @@ export default function Finance() {
 
     const payload = {
       ...entry,
-      kind: col.kind,
-      paid: col.paid,
+      kind:   col.kind,
+      paid:   col.paid,
       paidAt: col.paid ? new Date().toISOString() : null,
     };
 
     try {
       const res = await fetch(`/api/finance/${dragId}`, {
-        method: "PUT",
+        method:  "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body:    JSON.stringify(payload),
       });
 
       if (!res.ok) throw new Error("Erro ao mover card");
 
       const updated = await res.json();
-      setEntries((prev) => prev.map((en) => (en.id === dragId ? updated : en)));
+      setEntries((prev) =>
+        prev.map((en) => (en.id === dragId ? updated : en)),
+      );
     } catch (error) {
       console.error(error);
       alert(
@@ -928,9 +954,7 @@ export default function Finance() {
             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
           >
             {MONTHS.map((m, i) => (
-              <option key={m} value={i + 1}>
-                {m}
-              </option>
+              <option key={m} value={i + 1}>{m}</option>
             ))}
           </select>
 
@@ -940,16 +964,14 @@ export default function Finance() {
             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs"
           >
             {[2024, 2025, 2026, 2027].map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
+              <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
       </div>
 
       {/* resumo por categoria */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {summaryByCategory.map((item) => (
           <button
             key={item.cat}
@@ -966,38 +988,14 @@ export default function Finance() {
               </span>
             </div>
 
-            <p>
-              A pagar (aberto):{" "}
-              <span className="font-semibold text-amber-300">
-                {formatCurrency(item.toPayOpen)}
-              </span>
-            </p>
-            <p>
-              A pagar (pago):{" "}
-              <span className="font-semibold text-emerald-300">
-                {formatCurrency(item.toPayPaid)}
-              </span>
-            </p>
-            <p>
-              A receber (pendente):{" "}
-              <span className="font-semibold text-amber-300">
-                {formatCurrency(item.toReceivePending)}
-              </span>
-            </p>
-            <p>
-              A receber (recebido):{" "}
-              <span className="font-semibold text-emerald-300">
-                {formatCurrency(item.toReceiveReceived)}
-              </span>
-            </p>
+            <p>A pagar (aberto): <span className="font-semibold text-amber-300">{formatCurrency(item.toPayOpen)}</span></p>
+            <p>A pagar (pago): <span className="font-semibold text-emerald-300">{formatCurrency(item.toPayPaid)}</span></p>
+            <p>A receber (pendente): <span className="font-semibold text-amber-300">{formatCurrency(item.toReceivePending)}</span></p>
+            <p>A receber (recebido): <span className="font-semibold text-emerald-300">{formatCurrency(item.toReceiveReceived)}</span></p>
 
             <div className="pt-1 mt-1 border-t border-slate-700 flex justify-between">
               <span className="text-slate-400">Saldo:</span>
-              <span
-                className={`font-semibold ${
-                  item.balance >= 0 ? "text-emerald-300" : "text-red-400"
-                }`}
-              >
+              <span className={`font-semibold ${item.balance >= 0 ? "text-emerald-300" : "text-red-400"}`}>
                 {formatCurrency(item.balance)}
               </span>
             </div>
@@ -1015,10 +1013,8 @@ export default function Finance() {
           <input
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.title}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, title: e.target.value }))
-            }
-            placeholder="Ex: Internet, salário..."
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="Ex: Conta de luz, dízimo..."
           />
         </div>
 
@@ -1029,9 +1025,7 @@ export default function Finance() {
             step="0.01"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.amount}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, amount: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
             placeholder="Ex: 150.00"
           />
         </div>
@@ -1042,9 +1036,7 @@ export default function Finance() {
             type="date"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.dueDate}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, dueDate: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
           />
         </div>
 
@@ -1054,10 +1046,7 @@ export default function Finance() {
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.kind}
             onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                kind: e.target.value as Entry["kind"],
-              }))
+              setForm((f) => ({ ...f, kind: e.target.value as Entry["kind"] }))
             }
           >
             <option value="A pagar">A pagar</option>
@@ -1066,9 +1055,7 @@ export default function Finance() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Categoria
-          </label>
+          <label className="text-xs font-medium text-slate-600">Categoria</label>
           <select
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.categoryId}
@@ -1083,9 +1070,7 @@ export default function Finance() {
                 ),
               )
               .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
+                <option key={c.id} value={c.id}>{c.name}</option>
               ))}
           </select>
         </div>
@@ -1096,7 +1081,6 @@ export default function Finance() {
             <label className="text-xs font-medium text-slate-600">
               Subtipo {form.kind === "A pagar" ? "(despesa)" : "(receita)"}
             </label>
-
             <div className="flex gap-2">
               <select
                 className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
@@ -1107,12 +1091,9 @@ export default function Finance() {
               >
                 <option value="">— Selecione —</option>
                 {availableTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
+                  <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-
               <button
                 type="button"
                 onClick={() => setShowNewType(true)}
@@ -1138,15 +1119,11 @@ export default function Finance() {
         </div>
 
         <div className="space-y-2 md:col-span-2 lg:col-span-3">
-          <label className="text-xs font-medium text-slate-600">
-            Observações
-          </label>
+          <label className="text-xs font-medium text-slate-600">Observações</label>
           <textarea
             className="w-full min-h-[60px] rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
             value={form.notes}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, notes: e.target.value }))
-            }
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           />
         </div>
 
@@ -1228,7 +1205,6 @@ export default function Finance() {
             const colEntries = filteredEntries.filter(
               (e) => e.kind === col.kind && e.paid === col.paid,
             );
-
             const total = colEntries.reduce((s, e) => s + e.amount, 0);
 
             return (
@@ -1276,9 +1252,7 @@ export default function Finance() {
                           )}
 
                           {e.recurring && (
-                            <span
-                              className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${col.badgeClass}`}
-                            >
+                            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${col.badgeClass}`}>
                               Recorrente
                             </span>
                           )}
@@ -1307,11 +1281,7 @@ export default function Finance() {
                         </p>
                       )}
 
-                      <p
-                        className={`text-xs font-semibold ${
-                          e.confirmed ? "text-slate-900" : "text-slate-400"
-                        }`}
-                      >
+                      <p className={`text-xs font-semibold ${e.confirmed ? "text-slate-900" : "text-slate-400"}`}>
                         {formatCurrency(e.amount)}
                         {!e.confirmed && (
                           <span className="ml-1 text-[9px] font-normal">
