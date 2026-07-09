@@ -24,8 +24,8 @@ model Activity {
   client      String?
   status      String           @default("Pendente")
   categoryId  String
-  category    ActivityCategory @relation(fields: [categoryId], references: [id]) // ← corrigido: era "Category", agora é "ActivityCategory"
-  logs        ActivityLog[]    // ← adicionado
+  category    ActivityCategory @relation(fields: [categoryId], references: [id])
+  logs        ActivityLog[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -45,6 +45,21 @@ model FinanceCategory {
   partner Boolean        @default(false)
   custom  Boolean        @default(true)
   entries FinanceEntry[]
+  types   FinanceType[]  // ← novo: tipos vinculados à categoria
+}
+
+model FinanceType {
+  id         String          @id @default(cuid())
+  name       String
+  kind       String          // "A pagar" | "A receber"
+  categoryId String
+  category   FinanceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  active     Boolean         @default(true)
+  entries    FinanceEntry[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([categoryId, kind, name])
 }
 
 model FinanceEntry {
@@ -55,10 +70,12 @@ model FinanceEntry {
   kind              String          @default("A pagar")
   category          FinanceCategory @relation(fields: [categoryId], references: [id])
   categoryId        String
+  financeType       FinanceType?    @relation(fields: [financeTypeId], references: [id], onDelete: SetNull)
+  financeTypeId     String?         // ← novo: opcional, só usado na Igreja
   partner           String          @default("")
   notes             String          @default("")
   recurring         Boolean         @default(false)
-  confirmed         Boolean         @default(false)   // ← novo campo
+  confirmed         Boolean         @default(false)
   paid              Boolean         @default(false)
   paidAt            DateTime?
   generatedFromId   String?

@@ -21,6 +21,8 @@ type Entry = {
   kind: "A pagar" | "A receber";
   categoryId: string;
   category: { id: string; name: string; kind: string };
+  financeTypeId: string | null;
+  financeType: { id: string; name: string; kind: string } | null;
   partner: string;
   notes: string;
   recurring: boolean;
@@ -37,6 +39,14 @@ type Category = {
   custom: boolean;
 };
 
+type FinanceType = {
+  id: string;
+  name: string;
+  kind: string;
+  categoryId: string;
+  active: boolean;
+};
+
 type SummaryItem = {
   cat: string;
   toPayOpen: number;
@@ -47,6 +57,7 @@ type SummaryItem = {
 };
 
 const ALLOWED_CATEGORIES = ["Trabalho", "Igreja", "Particular"] as const;
+const CHURCH_CATEGORY = "Igreja";
 
 // ---------- colunas do kanban ----------
 type KanbanColumn = {
@@ -216,14 +227,94 @@ function ChartModal({
   );
 }
 
+// ---------- modal novo tipo ----------
+function NewTypeModal({
+  categoryId,
+  kind,
+  onClose,
+  onCreated,
+}: {
+  categoryId: string;
+  kind: string;
+  onClose: () => void;
+  onCreated: (type: FinanceType) => void;
+}) {
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!name.trim()) { alert("Informe um nome."); return; }
+    try {
+      setSaving(true);
+      const res = await fetch("/api/finance-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), kind, categoryId }),
+      });
+      if (!res.ok) throw new Error("Erro ao criar tipo");
+      const created = await res.json();
+      onCreated(created);
+      onClose();
+    } catch (error) {
+      alert(`Erro: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-slate-900">
+            Novo tipo — {kind}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+        </div>
+        <input
+          autoFocus
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white mb-4"
+          placeholder="Ex: Administrativo, Dízimos..."
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSave()}
+        />
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-slate-300 text-sm px-3 py-2 text-slate-600 hover:bg-slate-100"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-md bg-slate-900 text-slate-100 text-sm px-4 py-2 hover:bg-slate-800 disabled:opacity-50"
+          >
+            {saving ? "Salvando..." : "Criar tipo"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- componente principal ----------
 export default function Finance() {
-  const [entries, setEntries]     = useState<Entry[]>([]);
-  const [cats, setCats]           = useState<Category[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [dragId, setDragId]       = useState<string | null>(null);
-  const [chartItem, setChartItem] = useState<SummaryItem | null>(null);
+  const [entries, setEntries]         = useState<Entry[]>([]);
+  const [cats, setCats]               = useState<Category[]>([]);
+  const [financeTypes, setFinanceTypes] = useState<FinanceType[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [editingId, setEditingId]     = useState<string | null>(null);
+  const [dragId, setDragId]           = useState<string | null>(null);
+  const [chartItem, setChartItem]     = useState<SummaryItem | null>(null);
+  const [showNewType, setShowNewType] = useState(false);
 
   const today = new Date();
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
@@ -233,16 +324,29 @@ export default function Finance() {
     useState<(typeof ALLOWED_CATEGORIES)[number]>("Trabalho");
 
   const [form, setForm] = useState({
-    title:      "",
-    amount:     "",
-    dueDate:    "",
-    kind:       "A pagar" as Entry["kind"],
-    categoryId: "",
-    partner:    "",
-    notes:      "",
-    recurring:  false,
-    confirmed:  false,
+    title:         "",
+    amount:        "",
+    dueDate:       "",
+    kind:          "A pagar" as Entry["kind"],
+    categoryId:    "",
+    financeTypeId: "",
+    partner:       "",
+    notes:         "",
+    recurring:     false,
+    confirmed:     false,
   });
+
+  // ---------- derivados ----------
+  const churchCat = cats.find((c) => c.name === CHURCH_CATEGORY);
+  const isChurch  = activeCategory === CHURCH_CATEGORY;
+
+  // tipos filtrados pelo kind do formulário (só para Igreja)
+  const availableTypes = useMemo(() => {
+    if (!churchCat) return [];
+    return financeTypes.filter(
+      (t) => t.categoryId === churchCat.id && t.kind === form.kind && t.active,
+    );
+  }, [financeTypes, churchCat, form.kind]);
 
   // ---------- load ----------
   async function loadData() {
@@ -259,6 +363,7 @@ export default function Finance() {
       ]);
       setEntries(entData);
       setCats(catData);
+
       const firstCat = catData.find((c: Category) =>
         ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
       );
@@ -268,6 +373,13 @@ export default function Finance() {
       }));
       if (firstCat)
         setActiveCategory(firstCat.name as (typeof ALLOWED_CATEGORIES)[number]);
+
+      // carrega tipos da Igreja
+      const churchCategory = catData.find((c: Category) => c.name === CHURCH_CATEGORY);
+      if (churchCategory) {
+        const typesRes = await fetch(`/api/finance-types?categoryId=${churchCategory.id}`);
+        if (typesRes.ok) setFinanceTypes(await typesRes.json());
+      }
     } catch (error) {
       console.error(error);
       alert(`Erro ao carregar dados: ${error instanceof Error ? error.message : String(error)}`);
@@ -277,6 +389,11 @@ export default function Finance() {
   }
 
   useEffect(() => { loadData(); }, []);
+
+  // reseta financeTypeId ao trocar kind ou categoria
+  useEffect(() => {
+    setForm((f) => ({ ...f, financeTypeId: "" }));
+  }, [form.kind, activeCategory]);
 
   // ---------- filtros ----------
   const monthFiltered = useMemo(() => {
@@ -290,7 +407,7 @@ export default function Finance() {
     return monthFiltered.filter((e) => e.category?.name === activeCategory);
   }, [monthFiltered, activeCategory]);
 
-  // ---------- resumo por categoria ----------
+  // ---------- resumo ----------
   const summaryByCategory = useMemo<SummaryItem[]>(() => {
     return ALLOWED_CATEGORIES.map((cat) => {
       const items             = monthFiltered.filter((e) => e.category?.name === cat);
@@ -312,15 +429,16 @@ export default function Finance() {
     if (!form.categoryId)   { alert("Selecione uma categoria."); return; }
 
     const payload = {
-      title:      form.title,
-      amount:     Number(form.amount),
-      dueDate:    form.dueDate,
-      kind:       form.kind,
-      categoryId: form.categoryId,
-      partner:    form.partner,
-      notes:      form.notes,
-      recurring:  form.recurring,
-      confirmed:  form.confirmed,
+      title:         form.title,
+      amount:        Number(form.amount),
+      dueDate:       form.dueDate,
+      kind:          form.kind,
+      categoryId:    form.categoryId,
+      financeTypeId: form.financeTypeId || null,
+      partner:       form.partner,
+      notes:         form.notes,
+      recurring:     form.recurring,
+      confirmed:     form.confirmed,
     };
 
     try {
@@ -350,7 +468,8 @@ export default function Finance() {
       );
       setForm({
         title: "", amount: "", dueDate: "", kind: "A pagar",
-        categoryId: firstCat?.id || cats[0]?.id || "",
+        categoryId:    firstCat?.id || cats[0]?.id || "",
+        financeTypeId: "",
         partner: "", notes: "", recurring: false, confirmed: false,
       });
       setEditingId(null);
@@ -377,15 +496,16 @@ export default function Finance() {
   function startEdit(entry: Entry) {
     setEditingId(entry.id);
     setForm({
-      title:      entry.title,
-      amount:     String(entry.amount),
-      dueDate:    entry.dueDate.slice(0, 10),
-      kind:       entry.kind,
-      categoryId: entry.categoryId,
-      partner:    entry.partner,
-      notes:      entry.notes,
-      recurring:  entry.recurring,
-      confirmed:  entry.confirmed,
+      title:         entry.title,
+      amount:        String(entry.amount),
+      dueDate:       entry.dueDate.slice(0, 10),
+      kind:          entry.kind,
+      categoryId:    entry.categoryId,
+      financeTypeId: entry.financeTypeId ?? "",
+      partner:       entry.partner,
+      notes:         entry.notes,
+      recurring:     entry.recurring,
+      confirmed:     entry.confirmed,
     });
   }
 
@@ -396,7 +516,8 @@ export default function Finance() {
     );
     setForm({
       title: "", amount: "", dueDate: "", kind: "A pagar",
-      categoryId: firstCat?.id || cats[0]?.id || "",
+      categoryId:    firstCat?.id || cats[0]?.id || "",
+      financeTypeId: "",
       partner: "", notes: "", recurring: false, confirmed: false,
     });
   }
@@ -447,9 +568,17 @@ export default function Finance() {
   return (
     <div className="space-y-6">
 
-      {/* modal do gráfico */}
+      {/* modais */}
       {chartItem && (
         <ChartModal item={chartItem} onClose={() => setChartItem(null)} />
+      )}
+      {showNewType && churchCat && (
+        <NewTypeModal
+          categoryId={churchCat.id}
+          kind={form.kind}
+          onClose={() => setShowNewType(false)}
+          onCreated={(t) => setFinanceTypes((prev) => [...prev, t])}
+        />
       )}
 
       {/* ── Cabeçalho + filtro mês/ano ── */}
@@ -477,7 +606,7 @@ export default function Finance() {
         </div>
       </div>
 
-      {/* ── Resumo por categoria (clicável → abre gráfico) ── */}
+      {/* ── Resumo por categoria ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {summaryByCategory.map((item) => (
           <button
@@ -571,6 +700,35 @@ export default function Finance() {
               ))}
           </select>
         </div>
+
+        {/* subtipo da Igreja */}
+        {isChurch && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600">
+              Subtipo {form.kind === "A pagar" ? "(despesa)" : "(receita)"}
+            </label>
+            <div className="flex gap-2">
+              <select
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
+                value={form.financeTypeId}
+                onChange={(e) => setForm((f) => ({ ...f, financeTypeId: e.target.value }))}
+              >
+                <option value="">— Selecione —</option>
+                {availableTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setShowNewType(true)}
+                className="shrink-0 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                title="Criar novo subtipo"
+              >
+                + Novo
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-xs font-medium text-slate-600">Parceiro</label>
@@ -707,6 +865,13 @@ export default function Finance() {
                           )}
                         </div>
                       </div>
+
+                      {/* subtipo da Igreja */}
+                      {e.financeType && (
+                        <span className="inline-block text-[9px] font-medium px-1.5 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
+                          {e.financeType.name}
+                        </span>
+                      )}
 
                       <p className="text-[10px] text-slate-400">
                         {new Date(e.dueDate).toLocaleDateString("pt-BR")}
