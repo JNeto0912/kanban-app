@@ -16,7 +16,15 @@ model ActivityCategory {
   activities Activity[]
   createdAt  DateTime   @default(now())
 }
-
+model FinanceShareLink {
+  id         String   @id @default(cuid())
+  token      String   @unique @default(cuid())
+  categoryId String
+  category   FinanceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  active     Boolean  @default(true)
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+}
 model Activity {
   id          String           @id @default(cuid())
   title       String
@@ -46,6 +54,7 @@ model FinanceCategory {
   custom  Boolean        @default(true)
   entries FinanceEntry[]
   types   FinanceType[]  // ← novo: tipos vinculados à categoria
+  shareLinks FinanceShareLink[]
 }
 
 model FinanceType {

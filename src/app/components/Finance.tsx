@@ -146,7 +146,7 @@ const MONTHS = [
   "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-const MAIN_COLORS    = ["#f59e0b", "#10b981", "#6366f1"];
+const MAIN_COLORS = ["#f59e0b", "#10b981", "#6366f1"];
 const DRILLDOWN_COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#14b8a6",
   "#f59e0b", "#22c55e", "#06b6d4", "#ef4444",
@@ -165,30 +165,30 @@ function ChartModal({
   const [drilldown, setDrilldown]         = useState<DrilldownState | null>(null);
   const [subtypeDetail, setSubtypeDetail] = useState<SubtypeDetail>(null);
 
-const mainData: ChartPoint[] = [
-  {
-    name:      "A pagar (aberto)",
-    value:     item.toPayOpen,
-    fill:      MAIN_COLORS[0],
-    drillable: false,
-  },
-  {
-    name:                        "A pagar (pago)",
-    value:     item.toPayPaid,
-    fill:      MAIN_COLORS[1],
-    drillable: item.cat === CHURCH_CATEGORY,
-    drillKind: "A pagar" as Entry["kind"],
-    drillPaid: true,
-  },
-  {
-    name:      "Entradas confirmadas",
-    value:     item.toReceiveReceived,
-    fill:      MAIN_COLORS[2],
-    drillable: item.cat === CHURCH_CATEGORY,
-    drillKind: "A receber" as Entry["kind"],
-    drillPaid: true,
-  },
-].filter((d) => d.value > 0);
+  const mainData: ChartPoint[] = [
+    {
+      name:      "A pagar (aberto)",
+      value:     item.toPayOpen,
+      fill:      MAIN_COLORS[0],
+      drillable: false,
+    },
+    {
+      name:      "A pagar (pago)",
+      value:     item.toPayPaid,
+      fill:      MAIN_COLORS[1],
+      drillable: item.cat === CHURCH_CATEGORY,
+      drillKind: "A pagar" as Entry["kind"],
+      drillPaid: true,
+    },
+    {
+      name:      "Entradas confirmadas",
+      value:     item.toReceiveReceived,
+      fill:      MAIN_COLORS[2],
+      drillable: item.cat === CHURCH_CATEGORY,
+      drillKind: "A receber" as Entry["kind"],
+      drillPaid: true,
+    },
+  ].filter((d) => d.value > 0);
 
   function openDrilldown(point: ChartPoint) {
     if (
@@ -240,8 +240,8 @@ const mainData: ChartPoint[] = [
     if (drilldown)     { setDrilldown(null);      return; }
   }
 
-  const currentData   = drilldown ? drilldown.data : mainData;
-  const subtotal      = subtypeDetail
+  const currentData = drilldown ? drilldown.data : mainData;
+  const subtotal    = subtypeDetail
     ? subtypeDetail.items.reduce((sum, e) => sum + e.amount, 0)
     : 0;
 
@@ -273,7 +273,7 @@ const mainData: ChartPoint[] = [
             )}
             <h3 className="text-base font-semibold text-slate-900">
               {item.cat}
-              {drilldown    && ` — ${drilldown.label}`}
+              {drilldown     && ` — ${drilldown.label}`}
               {subtypeDetail && ` — ${subtypeDetail.label}`}
             </h3>
             <p className="text-[11px] text-slate-400">
@@ -511,8 +511,8 @@ function NewTypeModal({
   onClose: () => void;
   onCreated: (type: FinanceType) => void;
 }) {
-  const [name, setSaving_name]  = useState("");
-  const [saving, setSaving]     = useState(false);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function handleSave() {
     if (!name.trim()) { alert("Informe um nome."); return; }
@@ -566,7 +566,7 @@ function NewTypeModal({
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white mb-4"
           placeholder="Ex: Administrativo, Dízimos..."
           value={name}
-          onChange={(e) => setSaving_name(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void handleSave(); }}
         />
 
@@ -586,6 +586,110 @@ function NewTypeModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------- share button ----------
+function ShareButton({ categoryId }: { categoryId: string }) {
+  const [link, setLink]       = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied]   = useState(false);
+
+  // carrega link ativo ao montar
+  useEffect(() => {
+    async function loadExisting() {
+      try {
+        const res = await fetch(
+          `/api/finance-share?categoryId=${categoryId}`,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.token) {
+          setLink(`${window.location.origin}/relatorio/${data.token}`);
+        }
+      } catch {
+        // silencioso
+      }
+    }
+    void loadExisting();
+  }, [categoryId]);
+
+  async function generateLink() {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/finance-share", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ categoryId }),
+      });
+      if (!res.ok) throw new Error("Erro ao gerar link");
+      const data = await res.json();
+      setLink(`${window.location.origin}/relatorio/${data.token}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao gerar link");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function revokeLink() {
+    if (
+      !confirm(
+        "Revogar o link? Quem tiver o link não conseguirá mais acessar.",
+      )
+    ) return;
+    try {
+      await fetch(`/api/finance-share?categoryId=${categoryId}`, {
+        method: "DELETE",
+      });
+      setLink(null);
+    } catch {
+      alert("Erro ao revogar link");
+    }
+  }
+
+  async function copyLink() {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {!link ? (
+        <button
+          type="button"
+          onClick={generateLink}
+          disabled={loading}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50 flex items-center gap-1"
+        >
+          🔗 {loading ? "Gerando..." : "Compartilhar relatório da Igreja"}
+        </button>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 w-full">
+          <input
+            readOnly
+            value={link}
+            className="flex-1 min-w-0 rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-700"
+          />
+          <button
+            type="button"
+            onClick={copyLink}
+            className="rounded-md bg-slate-900 text-slate-100 text-xs px-3 py-1.5 hover:bg-slate-800"
+          >
+            {copied ? "✓ Copiado" : "Copiar"}
+          </button>
+          <button
+            type="button"
+            onClick={revokeLink}
+            className="rounded-md border border-red-200 text-red-500 text-xs px-3 py-1.5 hover:bg-red-50"
+          >
+            Revogar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -664,7 +768,9 @@ export default function Finance() {
       setCats(catData);
 
       const firstCat = catData.find((c: Category) =>
-        ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
       );
 
       setForm((prev) => ({
@@ -673,7 +779,9 @@ export default function Finance() {
       }));
 
       if (firstCat) {
-        setActiveCategory(firstCat.name as (typeof ALLOWED_CATEGORIES)[number]);
+        setActiveCategory(
+          firstCat.name as (typeof ALLOWED_CATEGORIES)[number],
+        );
       }
 
       const churchCategory = catData.find(
@@ -745,9 +853,9 @@ export default function Finance() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!form.title.trim())  { alert("Informe um título.");      return; }
-    if (!form.amount)        { alert("Informe um valor.");       return; }
-    if (!form.dueDate)       { alert("Informe uma data.");       return; }
+    if (!form.title.trim())  { alert("Informe um título.");       return; }
+    if (!form.amount)        { alert("Informe um valor.");        return; }
+    if (!form.dueDate)       { alert("Informe uma data.");        return; }
     if (!form.categoryId)    { alert("Selecione uma categoria."); return; }
     if (isChurchForm && !form.financeTypeId) {
       alert("Selecione um subtipo da Igreja.");
@@ -795,7 +903,9 @@ export default function Finance() {
       }
 
       const firstCat = cats.find((c) =>
-        ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
+        ALLOWED_CATEGORIES.includes(
+          c.name as (typeof ALLOWED_CATEGORIES)[number],
+        ),
       );
 
       setForm({
@@ -854,7 +964,9 @@ export default function Finance() {
   function cancelEdit() {
     setEditingId(null);
     const firstCat = cats.find((c) =>
-      ALLOWED_CATEGORIES.includes(c.name as (typeof ALLOWED_CATEGORIES)[number]),
+      ALLOWED_CATEGORIES.includes(
+        c.name as (typeof ALLOWED_CATEGORIES)[number],
+      ),
     );
     setForm({
       title: "", amount: "", dueDate: "", kind: "A pagar",
@@ -1195,6 +1307,11 @@ export default function Finance() {
           </button>
         ))}
       </div>
+
+      {/* compartilhamento — só na Igreja */}
+      {activeCategory === CHURCH_CATEGORY && churchCat && (
+        <ShareButton categoryId={churchCat.id} />
+      )}
 
       {/* kanban */}
       {loading ? (
